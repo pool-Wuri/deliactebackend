@@ -1,0 +1,112 @@
+server:
+  port: 8090
+  servlet:
+    context-path: /api
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  application:
+    name: deliacte
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/deliacte_bd
+    username: deliacte_admin
+    password: TestPassword123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true
+    open-in-view: false
+
+  mail:
+    host: mailer.gov.bf
+    port: 465
+    username: achat-billets-avion@tic.gov.bf
+    password: gs1!nYGF90K
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
+            trust: mailer.gov.bf
+          auth: true
+          starttls:
+            enable: false
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# JWT Configuration
+jwt:
+  secret: deliacte-secret-key-2024-burkina-faso-government-platform-secure-token-generation-key
+  expiration: 86400000
+  refresh-expiration: 604800000
+
+# Application Configuration
+app:
+  name: Deliacte
+  version: 1.0.0
+  base-url: http://localhost:8080
+  frontend-url: http://localhost:4200
+  cors:
+    allowed-origins: http://localhost:4200,http://localhost:3000
+  dossier:
+    prefix: DOS
+  email:
+    from: achat-billets-avion@tic.gov.bf
+    from-name: Deliacte - Plateforme de Services Gouvernementaux
+  callback:
+    url: "http://localhost:8090/api/payment/callback" # URL que ARZEKA appellera après le paiement
+
+
+# Swagger/OpenAPI Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operationsSorter: method
+    tagsSorter: alpha
+
+file:
+  upload-dir: ./uploads/templates
+  outputs-dir: ./outputs/dossiers
+  max-size: 10MB
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.deliacte: DEBUG
+    org.springframework.security: INFO
+
+#FASO_ARZEKA
+# Configuration FASO ARZEKA
+arzeka:
+  merchant:
+    id: "174"
+  # Note: Le token est souvent un JWT fourni par ARZEKA ou généré via leur portail.
+  # Remplacez par la valeur réelle fournie dans votre documentation technique.
+  token: "M4uE:k0poEHw6^6X"
+  base:
+    url: "https://pgw-test.fasoarzeka.bf" # Changez en https://pgw.fasoarzeka.bf pour la prod

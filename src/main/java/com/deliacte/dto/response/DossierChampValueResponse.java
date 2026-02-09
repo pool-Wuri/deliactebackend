@@ -1,0 +1,23 @@
+package com.deliacte.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.UUID;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DossierChampValueResponse {
+
+    private UUID id;
+    private String value;
+    private String filePath;
+    private Integer version;
+    private Boolean isCurrent;
+    private ChampOperationResponse champOperation;
+    private UUID operationId;
+}
