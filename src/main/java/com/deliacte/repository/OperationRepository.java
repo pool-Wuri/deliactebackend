@@ -1,6 +1,7 @@
 package com.deliacte.repository;
 
 import com.deliacte.entity.Operation;
+import com.deliacte.entity.Procedure;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -135,4 +136,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
 
 
     // Récupère la première opération d'une procédure (sans opération précédente)
-    Optional<Operation> findFirstByProcedureIdAndPreviousOperationsIsEmpty(UUID procedureId);}
+    Optional<Operation> findFirstByProcedureIdAndPreviousOperationsIsEmpty(UUID procedureId);
+
+    Optional<Operation> findByNameAndProcedure(String remplirFormulaire, Procedure visaProcedure);
+}

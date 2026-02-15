@@ -61,4 +61,5 @@ public interface OrganisationRepository extends JpaRepository<Organisation, UUID
     List<Organisation> findOrganisationsWithProceduresByUserEmail(String email);
 
 
+    Optional<Organisation> findByCode(String s);
 }

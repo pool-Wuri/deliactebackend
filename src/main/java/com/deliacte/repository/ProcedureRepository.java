@@ -140,5 +140,5 @@ public interface ProcedureRepository extends JpaRepository<Procedure, UUID> {
     );
 
 
-
+    Optional<Procedure> findByCode(String s);
 }

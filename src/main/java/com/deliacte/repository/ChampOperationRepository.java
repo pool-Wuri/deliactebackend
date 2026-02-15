@@ -1,6 +1,7 @@
 package com.deliacte.repository;
 
 import com.deliacte.entity.ChampOperation;
+import com.deliacte.entity.Operation;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -91,4 +92,5 @@ ORDER BY co.order
     List<ChampOperation> findGlobalByProcedure(@Param("procedureId") UUID procedureId);
 
 
+    Optional<ChampOperation> findByLabelAndOperation(String nomComplet, Operation op1);
 }
