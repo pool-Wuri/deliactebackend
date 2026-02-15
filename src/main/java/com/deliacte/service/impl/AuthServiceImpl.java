@@ -14,7 +14,7 @@ import com.deliacte.exception.ResourceNotFoundException;
 import com.deliacte.repository.UserRepository;
 import com.deliacte.security.JwtTokenProvider;
 import com.deliacte.service.AuthService;
-import com.deliacte.service.EmailService;
+import com.deliacte.utils.EmailService;
 import com.deliacte.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

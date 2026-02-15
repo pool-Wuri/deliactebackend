@@ -36,8 +36,8 @@ spring:
   mail:
     host: mailer.gov.bf
     port: 465
-    username: achat-billets-avion@tic.gov.bf
-    password: gs1!nYGF90K
+    username: deliacte@tic.gov.bf
+    password: D&2026ia!!eL
     protocol: smtp
     default-encoding: UTF-8
     properties:
@@ -65,14 +65,14 @@ jwt:
 app:
   name: Deliacte
   version: 1.0.0
-  base-url: http://localhost:8080
+  base-url: https://deliacte.gov.bf
   frontend-url: http://localhost:4200
   cors:
     allowed-origins: http://localhost:4200,http://localhost:3000
   dossier:
     prefix: DOS
   email:
-    from: achat-billets-avion@tic.gov.bf
+    from: deliacte@tic.gov.bf
     from-name: Deliacte - Plateforme de Services Gouvernementaux
   callback:
     url: "http://localhost:8090/api/payment/callback" # URL que ARZEKA appellera après le paiement

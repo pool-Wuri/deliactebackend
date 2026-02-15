@@ -9,20 +9,20 @@ import com.deliacte.dto.response.OperationSimpleResponse;
 import com.deliacte.dto.response.OrganisationSimpleResponse;
 import com.deliacte.dto.response.ProcedureSimpleResponse;
 import com.deliacte.dto.response.UserResponse;
-import com.deliacte.entity.Organisation;
 import com.deliacte.entity.Operation;
+import com.deliacte.entity.Organisation;
 import com.deliacte.entity.Procedure;
 import com.deliacte.entity.User;
 import com.deliacte.enums.UserRole;
 import com.deliacte.exception.BadRequestException;
 import com.deliacte.exception.ResourceNotFoundException;
-import com.deliacte.repository.OrganisationRepository;
 import com.deliacte.repository.OperationRepository;
+import com.deliacte.repository.OrganisationRepository;
 import com.deliacte.repository.ProcedureRepository;
 import com.deliacte.repository.UserRepository;
 import com.deliacte.security.SecurityUtils;
-import com.deliacte.service.EmailService;
 import com.deliacte.service.UserService;
+import com.deliacte.utils.EmailService;
 import com.deliacte.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +32,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -104,7 +107,7 @@ public class UserServiceImpl implements UserService {
         // Sauvegarde de l'utilisateur
         User savedUser = userRepository.save(user);
         try {
-            emailService.sendPasswordEmail(email, user , rawPassword);
+            emailService.sendAccountCreationEmail(email, user.getFirstName(), user.getLastName(), rawPassword);
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi de l'email de vérification: {}", e.getMessage());
             // On ne bloque pas l'inscription si l'email échoue
@@ -127,8 +130,8 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
 
-        if (!user.getEmail().equals(request.getEmail()) && 
-            userRepository.existsByEmailAndDeletedFalse(request.getEmail())) {
+        if (!user.getEmail().equals(request.getEmail()) &&
+                userRepository.existsByEmailAndDeletedFalse(request.getEmail())) {
             return ApiResponse.error("Un utilisateur avec cet email existe déjà");
         }
 
@@ -136,7 +139,7 @@ public class UserServiceImpl implements UserService {
         user.setLastName(request.getLastName());
         user.setEmail(request.getEmail());
         user.setTelephone(request.getTelephone());
-        
+
         if (request.getRole() != null) {
             user.setRole(request.getRole());
         }
@@ -258,11 +261,11 @@ public class UserServiceImpl implements UserService {
     public ApiResponse<Void> changePassword(UUID id, String oldPassword, String newPassword) {
         User user = userRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        
+
         if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
             return ApiResponse.error("L'ancien mot de passe est incorrect");
         }
-        
+
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         return ApiResponse.success(null, "Mot de passe modifié avec succès");
@@ -278,6 +281,7 @@ public class UserServiceImpl implements UserService {
         userRepository.save(user);
         return ApiResponse.success(null, "Mot de passe réinitialisé avec succès");
     }
+
     @Override
     public ApiResponse<UserResponse> assignOrganisations(UUID userId, IdListRequest request) {
 
@@ -306,10 +310,10 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
-    public ApiResponse<UserResponse> assignProcedures(UUID userId,  IdListRequest ids) {
+    public ApiResponse<UserResponse> assignProcedures(UUID userId, IdListRequest ids) {
         User user = userRepository.findByIdAndDeletedFalse(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        
+
         Set<Procedure> procedures = new HashSet<>();
         for (UUID procId : ids.getIds()) {
             Procedure proc = procedureRepository.findByIdAndDeletedFalse(procId)
@@ -325,7 +329,7 @@ public class UserServiceImpl implements UserService {
     public ApiResponse<UserResponse> assignOperations(UUID userId, IdListRequest operationIds) {
         User user = userRepository.findByIdAndDeletedFalse(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        
+
         Set<Operation> operations = new HashSet<>();
         for (UUID opId : operationIds.getIds()) {
             Operation op = operationRepository.findByIdAndDeletedFalse(opId)
@@ -335,7 +339,7 @@ public class UserServiceImpl implements UserService {
         user.setOperations(operations);
         User updatedUser = userRepository.save(user);
         try {
-            emailService.sendOperationsAssignedEmail(user, operations);
+            //  emailService.sendOperationsAssignedEmail(user, operations);
         } catch (Exception e) { // attrape toutes les exceptions
             log.error("Erreur lors de l'envoi de l'email d'assignation des opérations pour l'utilisateur {}: {}",
                     user.getEmail(), e.getMessage(), e);
@@ -344,7 +348,6 @@ public class UserServiceImpl implements UserService {
 
         return ApiResponse.success(mapToResponse(updatedUser), "Opérations assignées avec succès");
     }
-
 
 
     @Override
@@ -385,7 +388,6 @@ public class UserServiceImpl implements UserService {
     }
 
 
-
     @Transactional(readOnly = true)
     @Override
     public ApiResponse<PageResponse<UserResponse>> findByOperationId(UUID operationId) {
@@ -400,9 +402,6 @@ public class UserServiceImpl implements UserService {
 
         return ApiResponse.success(PageResponse.of(content));
     }
-
-
-
 
 
     private UserResponse mapToResponse(User user) {

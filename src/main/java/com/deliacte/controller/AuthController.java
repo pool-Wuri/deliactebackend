@@ -3,6 +3,8 @@ package com.deliacte.controller;
 import com.deliacte.dto.ApiResponse;
 import com.deliacte.dto.request.LoginRequest;
 import com.deliacte.dto.request.RegisterRequest;
+import com.deliacte.dto.request.ResendVerificationRequest;
+import com.deliacte.dto.request.ResetPasswordRequest;
 import com.deliacte.dto.response.AuthResponse;
 import com.deliacte.dto.response.UserResponse;
 import com.deliacte.enums.UserStatus;
@@ -65,28 +67,46 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    @Operation(summary = "Réinitialiser le mot de passe", description = "Réinitialise le mot de passe avec le token reçu par email")
-    public ResponseEntity<ApiResponse<Void>> resetPassword(@RequestBody Map<String, String> request) {
-        String token = request.get("token");
-        String newPassword = request.get("newPassword");
-        ApiResponse<Void> response = authService.resetPasswordWithToken(token, newPassword);
+    @Operation(
+            summary = "Réinitialiser le mot de passe",
+            description = "Réinitialise le mot de passe avec le token reçu par email"
+    )
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @RequestBody @Valid ResetPasswordRequest request) {
+
+        ApiResponse<Void> response = authService.resetPasswordWithToken(
+                request.getToken(),
+                request.getNewPassword()
+        );
         return ResponseEntity.status(response.getStatusCode()).body(response);
     }
+
 
     @GetMapping("/verify")
-    @Operation(summary = "Vérifier l'email", description = "Vérifie l'email de l'utilisateur avec le token reçu")
-    public ResponseEntity<ApiResponse<Void>> verifyEmail(@RequestParam String token) {
+    @Operation(
+            summary = "Vérifier l'email",
+            description = "Vérifie l'email de l'utilisateur avec le token reçu"
+    )
+    public ResponseEntity<ApiResponse<Void>> verifyEmail(@RequestParam("token") String token) {
         ApiResponse<Void> response = authService.verifyEmail(token);
+        return ResponseEntity
+                .status(response.getStatusCode())
+                .body(response);
+    }
+
+
+    @PostMapping("/resend-verification")
+    @Operation(
+            summary = "Renvoyer l'email de vérification",
+            description = "Renvoie l'email de vérification à l'utilisateur"
+    )
+    public ResponseEntity<ApiResponse<Void>> resendVerification(
+            @RequestBody @Valid ResendVerificationRequest request) {
+
+        ApiResponse<Void> response = authService.resendVerificationEmail(request.getEmail());
         return ResponseEntity.status(response.getStatusCode()).body(response);
     }
 
-    @PostMapping("/resend-verification")
-    @Operation(summary = "Renvoyer l'email de vérification", description = "Renvoie l'email de vérification à l'utilisateur")
-    public ResponseEntity<ApiResponse<Void>> resendVerification(@RequestBody Map<String, String> request) {
-        String email = request.get("email");
-        ApiResponse<Void> response = authService.resendVerificationEmail(email);
-        return ResponseEntity.status(response.getStatusCode()).body(response);
-    }
 
     @GetMapping("/user-statuses")
     @Operation(summary = "Liste des statuts utilisateur", description = "Retourne la liste des statuts disponibles pour l'inscription")
