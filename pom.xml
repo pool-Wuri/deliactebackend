@@ -12,7 +12,7 @@
     </parent>
 
     <groupId>com.deliacte</groupId>
-    <artifactId>deliacte-backend</artifactId>
+    <artifactId>deliacte</artifactId>
     <version>1.0.0</version>
     <name>Deliacte Backend</name>
     <description>Plateforme de délivrance d'actes administratifs</description>
