@@ -5,6 +5,7 @@ import com.deliacte.dto.PageResponse;
 import com.deliacte.dto.request.DossierRequest;
 import com.deliacte.dto.response.DossierListResponse;
 import com.deliacte.dto.response.DossierResponse;
+import com.deliacte.dto.response.DossierTimelineResponse;
 import com.deliacte.dto.response.MyDossierResponseDto;
 import com.deliacte.dto.response.OperationFormResponseDto;
 import com.deliacte.entity.Dossier;
@@ -30,4 +31,7 @@ public interface DossierService {
     ApiResponse<List<DossierListResponse>> getDossiersByOperation(UUID operationId);
 
     ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(String numeroDossier);
+
+    @Transactional(readOnly = true)
+    ApiResponse<DossierTimelineResponse> getDossierTimeline(String dossierNumber);
 }

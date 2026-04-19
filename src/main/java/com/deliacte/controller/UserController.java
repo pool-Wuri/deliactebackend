@@ -4,9 +4,12 @@ import com.deliacte.dto.ApiResponse;
 import com.deliacte.dto.PageResponse;
 import com.deliacte.dto.request.ChangePasswordRequest;
 import com.deliacte.dto.request.IdListRequest;
+import com.deliacte.dto.request.UpdateProfileRequest;
 import com.deliacte.dto.request.UserRequest;
+import com.deliacte.dto.response.UserProfileResponse;
 import com.deliacte.dto.response.UserResponse;
 import com.deliacte.enums.UserRole;
+import com.deliacte.security.SecurityUtils;
 import com.deliacte.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,8 +26,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
-import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -79,6 +80,26 @@ public class UserController {
         }
 
         return ResponseEntity.ok(response);
+    }
+
+
+    @PutMapping("/me/profile")
+    @Operation(
+            summary = "Mettre à jour mon profil",
+            description = "Permet à l'utilisateur connecté de mettre à jour ses informations personnelles " +
+                    "(nom, prénom, téléphone, genre, date de naissance, adresse, statut, documents d'identification...)"
+    )
+    public ResponseEntity<ApiResponse<UserProfileResponse>> updateMyProfile(
+
+            @Valid @RequestBody UpdateProfileRequest request) {
+
+        UUID userId = SecurityUtils.getCurrentUserId();
+        String email = SecurityUtils.getCurrentUserEmail();
+        UserRole role = SecurityUtils.getCurrentUserRole();
+
+        System.out.println(userId);
+        ApiResponse<UserProfileResponse> response = userService.updateProfile(userId, request);
+        return ResponseEntity.status(response.getSuccess() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(response);
     }
 
 
@@ -225,11 +246,13 @@ public class UserController {
     @PostMapping("/change-password")
     @Operation(summary = "Changer le mot de passe de l'utilisateur connecté")
     public ResponseEntity<ApiResponse<Void>> changePassword(
-            Principal principal,
+
             @RequestBody ChangePasswordRequest request) {
 
         // Récupérer l'ID de l'utilisateur connecté à partir du principal
-        UUID userId = UUID.fromString(principal.getName());
+        UUID userId = SecurityUtils.getCurrentUserId();
+        String email = SecurityUtils.getCurrentUserEmail();
+        UserRole role = SecurityUtils.getCurrentUserRole();
         ApiResponse<Void> response = userService.changePassword(userId, request);
 
         return ResponseEntity.ok(response);

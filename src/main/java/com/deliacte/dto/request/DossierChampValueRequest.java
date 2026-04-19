@@ -18,4 +18,6 @@ public class DossierChampValueRequest {
 
     private String value;
 
+    private String filePath;
+
 }

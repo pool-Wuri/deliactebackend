@@ -30,63 +30,90 @@ public class DossierServiceImpl implements DossierService {
     private final DossierOperationRepository dossierOperationRepository;
     private final DossierHistoriqueRepository dossierHistoriqueRepository;
     private final UserRepository userRepository;
-    private final DossierChampValueService dossierChampValueService; // Injection du service
-    private  final  ChampOperationRepository champOperationRepository;
+    private final DossierChampValueService dossierChampValueService;
+    private final ChampOperationRepository champOperationRepository;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SOUMISSION PRINCIPALE
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public Dossier processDossierSubmission(DossierRequest request, UUID userId) {
-        log.info("Traitement de la soumission pour l'utilisateur: {}", userId);
-        User currentUser = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+        log.info("Traitement soumission – utilisateur: {}, opération: {}",
+                userId, request.getCurrentOperationId());
 
+        User currentUser = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé : " + userId));
+
+        // 1. Trouver ou créer le dossier
         Dossier dossier = findOrCreateDossier(request, currentUser);
 
-        DossierOperation currentStep = dossierOperationRepository.findByDossierIdAndOperationIdAndStatus(
-                        dossier.getId(), request.getCurrentOperationId(), DossierOperationStatus.PENDING)
-                .orElseThrow(() -> new RuntimeException("Aucune étape en attente trouvée pour ce dossier à cette opération."));
+        // 2. Trouver l'étape courante (doit être PENDING)
+        DossierOperation currentStep = dossierOperationRepository
+                .findByDossierIdAndOperationIdAndStatus(
+                        dossier.getId(),
+                        request.getCurrentOperationId(),
+                        DossierOperationStatus.PENDING)
+                .orElseThrow(() -> new RuntimeException(
+                        "Aucune étape PENDING trouvée pour ce dossier à l'opération "
+                                + request.getCurrentOperationId()));
 
-       List <Operation> targetOperation = determineTargetOperations(request, currentStep.getOperation());
+        boolean isApproval = Boolean.TRUE.equals(request.getSendToNext());
 
-        DossierHistorique historique = createDossierHistory(request, dossier, currentUser, currentStep.getOperation(), targetOperation);
+        // 3. Déterminer les opérations cibles
+        List<Operation> targetOperations = determineTargetOperations(request, currentStep.getOperation());
 
+        // 4. Enregistrer l'historique
+        DossierHistorique historique = createDossierHistory(
+                request, dossier, currentUser,
+                currentStep.getOperation(), targetOperations, isApproval);
+
+        // 5. Sauvegarder les valeurs des champs
         if (request.getChampValues() != null && !request.getChampValues().isEmpty()) {
             for (var champValueRequest : request.getChampValues()) {
-                // Appel correct au service de versioning
                 dossierChampValueService.addOrUpdateChampValue(champValueRequest, historique);
             }
         }
 
-        updateCurrentStep(currentStep, request, currentUser);
+        // 6. Marquer l'étape courante comme COMPLETED ou REJECTED
+        updateCurrentStep(currentStep, isApproval, currentUser, request.getCommentaire());
 
-        if (!targetOperation.isEmpty()) {
-            createNewSteps(dossier, targetOperation);
+        // 7. En cas de REJET : annuler toutes les étapes PENDING des autres opérations
+        //    pour que les agents en aval ne voient plus ce dossier
+        if (!isApproval) {
+            cancelOtherPendingSteps(dossier, currentStep);
         }
 
-        updateDossierGlobalStatus(dossier, targetOperation, currentStep.getOperation());
+        // 8. Créer les nouvelles étapes sans créer de doublons PENDING
+        if (!targetOperations.isEmpty()) {
+            createNewStepsNoDuplicate(dossier, targetOperations);
+        }
 
-        return dossierRepository.save(dossier);
+        // 9. Mettre à jour le statut global du dossier
+        updateDossierGlobalStatus(dossier, targetOperations, currentStep.getOperation(), isApproval);
+
+        Dossier saved = dossierRepository.save(dossier);
+        log.info("Dossier {} traité avec succès – nouveau statut: {}",
+                saved.getDossierNumber(), saved.getStatus());
+        return saved;
     }
 
-
-
-
-
+    // ─────────────────────────────────────────────────────────────────────────
+    // LECTURE
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     @Override
     public ApiResponse<List<DossierListResponse>> getMyDossiers(UUID userId) {
-
         List<Dossier> dossiers = dossierRepository.findAllByUserId(userId);
 
         List<DossierListResponse> response = dossiers.stream()
                 .map(dossier -> {
-
                     DossierOperation currentOp =
                             dossierOperationRepository
                                     .findFirstByDossierIdAndStatusOrderByReceivedAtDesc(
-                                            dossier.getId(),
-                                            DossierOperationStatus.PENDING
-                                    )
+                                            dossier.getId(), DossierOperationStatus.PENDING)
                                     .orElse(null);
 
                     return DossierListResponse.builder()
@@ -94,118 +121,105 @@ public class DossierServiceImpl implements DossierService {
                             .dossierNumber(dossier.getDossierNumber())
                             .procedureId(dossier.getProcedure().getId())
                             .procedureName(dossier.getProcedure().getName())
-                            .citoyenName(dossier.getUser().getFirstName() + " "+ dossier.getUser().getLastName())
+                            .citoyenName(dossier.getUser().getFirstName() + " " + dossier.getUser().getLastName())
                             .status(dossier.getStatus())
                             .submittedAt(dossier.getSubmittedAt())
-                            .currentOperationId(
-                                    currentOp != null ? currentOp.getOperation().getId() : null
-                            )
-                            .currentOperationName(
-                                    currentOp != null ? currentOp.getOperation().getName() : null
-                            )
+                            .currentOperationId(currentOp != null ? currentOp.getOperation().getId() : null)
+                            .currentOperationName(currentOp != null ? currentOp.getOperation().getName() : null)
                             .build();
                 })
                 .toList();
 
-        return ApiResponse.success(
-                response,
-                "Liste des dossiers récupérée avec succès"
-        );
+        return ApiResponse.success(response, "Liste des dossiers récupérée avec succès");
     }
-
 
     @Transactional(readOnly = true)
     @Override
     public ApiResponse<List<DossierListResponse>> getDossiersByOperation(UUID operationId) {
-
+        // Ne retourne que les dossiers ayant une étape PENDING à cette opération
         List<Dossier> dossiers = dossierRepository.findAllByOperationId(
-                operationId,
-                DossierOperationStatus.PENDING
-        );
+                operationId, DossierOperationStatus.PENDING);
 
         List<DossierListResponse> response = dossiers.stream()
                 .map(dossier -> {
-
-                    DossierOperation currentOp =
-                            dossier.getOperationSteps().stream()
-                                    .filter(op ->
-                                            op.getOperation().getId().equals(operationId)
-                                                    && op.getStatus() == DossierOperationStatus.PENDING
-                                    )
-                                    .findFirst()
-                                    .orElse(null);
+                    DossierOperation currentOp = dossier.getOperationSteps().stream()
+                            .filter(op -> op.getOperation().getId().equals(operationId)
+                                    && op.getStatus() == DossierOperationStatus.PENDING)
+                            .findFirst()
+                            .orElse(null);
 
                     return DossierListResponse.builder()
                             .id(dossier.getId())
                             .dossierNumber(dossier.getDossierNumber())
                             .procedureId(dossier.getProcedure().getId())
                             .procedureName(dossier.getProcedure().getName())
-                            .citoyenName(
-                                    (dossier.getCreatedBy() != null)
-                                            ? String.format("%s %s",
-                                            Optional.ofNullable(dossier.getCreatedBy().getFirstName()).orElse(""),
-                                            Optional.ofNullable(dossier.getCreatedBy().getLastName()).orElse("")
-                                    ).trim()
-                                            : ""
-                            )
+                            .citoyenName(buildCitoyenName(dossier))
                             .status(dossier.getStatus())
                             .submittedAt(dossier.getSubmittedAt())
-                            .currentOperationId(
-                                    currentOp != null ? currentOp.getOperation().getId() : null
-                            )
-                            .currentOperationName(
-                                    currentOp != null ? currentOp.getOperation().getName() : null
-                            )
+                            .currentOperationId(currentOp != null ? currentOp.getOperation().getId() : null)
+                            .currentOperationName(currentOp != null ? currentOp.getOperation().getName() : null)
                             .build();
                 })
                 .toList();
 
-        return ApiResponse.success(
-                response,
-                "Liste des dossiers pour l’opération récupérée avec succès"
-        );
+        return ApiResponse.success(response, "Liste des dossiers pour l'opération récupérée avec succès");
     }
-
-
-
-
 
     @Override
-@Transactional(readOnly = true)
-public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(String numeroDossier) {
-
-    if (numeroDossier == null || numeroDossier.isEmpty()) {
-        throw new IllegalArgumentException("Le numéro de dossier est obligatoire");
-    }
-
-    // 1. Récupérer le dossier avec la procédure
-    Dossier dossier = dossierRepository.findByDossierNumberWithProcedure(numeroDossier)
-            .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + numeroDossier));
-
-    UUID procedureId = dossier.getProcedure() != null ? dossier.getProcedure().getId() : null;
-    String procedureName = dossier.getProcedure() != null ? dossier.getProcedure().getName() : null;
-
-    // 2. Récupérer toutes les valeurs du dossier depuis l'historique
-    Map<UUID, String> champValuesMap = new HashMap<>();
-    for (DossierHistorique historique : dossier.getHistoriques()) {
-        for (DossierChampValue val : historique.getChampValues()) {
-            // La dernière valeur écrase l'ancienne si plusieurs versions existent
-            champValuesMap.put(val.getChampOperation().getId(), val.getValue());
+    @Transactional(readOnly = true)
+    public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(String numeroDossier) {
+        if (numeroDossier == null || numeroDossier.isEmpty()) {
+            throw new IllegalArgumentException("Le numéro de dossier est obligatoire");
         }
-    }
 
-    // 3. Récupérer toutes les opérations associées aux champs (optionnel, pour grouper par EntityObject)
-    List<ChampOperation> champsAvecEntite = champOperationRepository.findByProcedureGroupedByEntity(procedureId);
-    List<ChampOperation> champsSansEntite = champOperationRepository.findGlobalByProcedure(procedureId);
+        Dossier dossier = dossierRepository.findByDossierNumberWithProcedure(numeroDossier)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + numeroDossier));
 
-    // 4. Grouper les champs par EntityObject
-    Map<EntityObject, List<ChampOperation>> groupedByEntity =
-            champsAvecEntite.stream().collect(Collectors.groupingBy(ChampOperation::getEntityObject));
+        UUID procedureId = dossier.getProcedure() != null ? dossier.getProcedure().getId() : null;
+        String procedureName = dossier.getProcedure() != null ? dossier.getProcedure().getName() : null;
 
-    List<EntityObjectWithChampOperationDto> entities = new ArrayList<>();
-    for (Map.Entry<EntityObject, List<ChampOperation>> entry : groupedByEntity.entrySet()) {
-        EntityObject entity = entry.getKey();
-        List<ChampOperationResponseDto> champDtos = entry.getValue().stream().map(champ -> {
+        // Construire la map des valeurs les plus récentes (actives) par champ.
+        // Pour les champs fichier, la valeur utile est filePath (value est null).
+        Map<UUID, String> champValuesMap = new HashMap<>();
+        for (DossierHistorique historique : dossier.getHistoriques()) {
+            for (DossierChampValue val : historique.getChampValues()) {
+                if (Boolean.TRUE.equals(val.getIsActive())) {
+                    String effectiveValue = (val.getValue() != null && !val.getValue().isBlank())
+                            ? val.getValue()
+                            : val.getFilePath();
+                    if (effectiveValue != null) {
+                        champValuesMap.put(val.getChampOperation().getId(), effectiveValue);
+                    }
+                }
+            }
+        }
+
+        List<ChampOperation> champsAvecEntite = champOperationRepository.findByProcedureGroupedByEntity(procedureId);
+        List<ChampOperation> champsSansEntite = champOperationRepository.findGlobalByProcedure(procedureId);
+
+        Map<EntityObject, List<ChampOperation>> groupedByEntity =
+                champsAvecEntite.stream().collect(Collectors.groupingBy(ChampOperation::getEntityObject));
+
+        List<EntityObjectWithChampOperationDto> entities = new ArrayList<>();
+        for (Map.Entry<EntityObject, List<ChampOperation>> entry : groupedByEntity.entrySet()) {
+            EntityObject entity = entry.getKey();
+            List<ChampOperationResponseDto> champDtos = entry.getValue().stream().map(champ -> {
+                ChampOperationResponseDto dto = buildChampOperationDto(champ);
+                if (champValuesMap.containsKey(champ.getId())) {
+                    dto.setDefaultValue(champValuesMap.get(champ.getId()));
+                }
+                return dto;
+            }).toList();
+
+            entities.add(EntityObjectWithChampOperationDto.builder()
+                    .entityId(entity.getId())
+                    .entityCode(entity.getCode())
+                    .entityLabel(entity.getName())
+                    .champOperations(champDtos)
+                    .build());
+        }
+
+        List<ChampOperationResponseDto> otherChampOperations = champsSansEntite.stream().map(champ -> {
             ChampOperationResponseDto dto = buildChampOperationDto(champ);
             if (champValuesMap.containsKey(champ.getId())) {
                 dto.setDefaultValue(champValuesMap.get(champ.getId()));
@@ -213,46 +227,110 @@ public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(Str
             return dto;
         }).toList();
 
-        entities.add(EntityObjectWithChampOperationDto.builder()
-                .entityId(entity.getId())
-                .entityCode(entity.getCode())
-                .entityLabel(entity.getName())
-                .champOperations(champDtos)
-                .build());
+        OperationFormResponseDto responseDto = OperationFormResponseDto.builder()
+                .currentOperationId(null)
+                .procedureId(procedureId)
+                .procedureName(procedureName)
+                .numeroDossier(numeroDossier)
+                .operationName(null)
+                .entities(entities)
+                .otherChampOperations(otherChampOperations)
+                .build();
+
+        return ApiResponse.success(responseDto,
+                "Formulaire du dossier chargé avec succès");
     }
 
-    // 5. Champs globaux (sans entité)
-    List<ChampOperationResponseDto> otherChampOperations = champsSansEntite.stream().map(champ -> {
-        ChampOperationResponseDto dto = buildChampOperationDto(champ);
-        if (champValuesMap.containsKey(champ.getId())) {
-            dto.setDefaultValue(champValuesMap.get(champ.getId()));
+    // ─────────────────────────────────────────────────────────────────────────
+    // TIMELINE
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<DossierTimelineResponse> getDossierTimeline(String dossierNumber) {
+        if (dossierNumber == null || dossierNumber.isBlank()) {
+            throw new IllegalArgumentException("Numéro de dossier obligatoire");
         }
-        return dto;
-    }).toList();
 
-    // 6. Aucun currentOperationId puisque tu veux retourner null
-    UUID currentOperationId = null;
-    String operationName = null;
+        Dossier dossier = dossierRepository.findByDossierNumberWithProcedure(dossierNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + dossierNumber));
 
-    // 7. Construire la réponse finale
-    OperationFormResponseDto responseDto = OperationFormResponseDto.builder()
-            .currentOperationId(currentOperationId)
-            .procedureId(procedureId)
-            .procedureName(procedureName)
-            .numeroDossier(numeroDossier)
-            .operationName(operationName)
-            .entities(entities)
-            .otherChampOperations(otherChampOperations)
-            .build();
+        Procedure procedure = dossier.getProcedure();
 
-    return ApiResponse.success(responseDto, "Formulaire du dossier chargé avec succès, incluant toutes les valeurs historiques");
-}
+        // Toutes les opérations de la procédure, dans l'ordre
+        List<Operation> allOps = operationRepository
+                .findByProcedureIdAndDeletedFalseOrderByOrderIndexAsc(procedure.getId());
 
+        // Toutes les étapes du dossier, indexées par operationId
+        List<DossierOperation> dossierSteps =
+                dossierOperationRepository.findByDossierIdOrderByReceivedAtAsc(dossier.getId());
 
+        Map<UUID, DossierOperation> stepsByOpId = dossierSteps.stream()
+                .collect(Collectors.toMap(
+                        ds -> ds.getOperation().getId(),
+                        ds -> ds,
+                        (a, b) -> b  // si doublon, prendre le dernier
+                ));
 
+        // Déterminer quelle étape est "courante" (PENDING la plus récente)
+        UUID currentOpId = dossierSteps.stream()
+                .filter(ds -> ds.getStatus() == DossierOperationStatus.PENDING)
+                .max(Comparator.comparing(DossierOperation::getReceivedAt))
+                .map(ds -> ds.getOperation().getId())
+                .orElse(null);
 
+        // Construire les steps dans l'ordre de la procédure
+        List<DossierOperationStepResponse> steps = new ArrayList<>();
+        for (Operation op : allOps) {
+            DossierOperation ds = stepsByOpId.get(op.getId());
 
-    // ... (les autres méthodes restent les mêmes)
+            String processedByName = null;
+            if (ds != null && ds.getProcessedBy() != null) {
+                User p = ds.getProcessedBy();
+                processedByName = ((p.getFirstName() != null ? p.getFirstName() : "") + " "
+                        + (p.getLastName() != null ? p.getLastName() : "")).trim();
+                if (processedByName.isBlank()) processedByName = p.getEmail();
+            }
+
+            String typeLibelle = (op.getTypeOperation() != null)
+                    ? op.getTypeOperation().getLibelle() : null;
+
+            steps.add(DossierOperationStepResponse.builder()
+                    .operationId(op.getId())
+                    .operationName(op.getName())
+                    .orderIndex(op.getOrderIndex())
+                    .isCitizenOperation(Boolean.TRUE.equals(op.getIsCitizenOperation()))
+                    .typeOperationLibelle(typeLibelle)
+                    .stepStatus(ds != null ? ds.getStatus() : null)
+                    .processedByName(processedByName)
+                    .comment(ds != null ? ds.getComment() : null)
+                    .receivedAt(ds != null ? ds.getReceivedAt() : null)
+                    .completedAt(ds != null ? ds.getCompletedAt() : null)
+                    .isCurrent(op.getId().equals(currentOpId))
+                    .isFirst(Boolean.TRUE.equals(op.getIsFirstOperation()))
+                    .isLast(Boolean.TRUE.equals(op.getIsLastOperation()))
+                    .build());
+        }
+
+        String orgName = (procedure.getOrganisation() != null)
+                ? procedure.getOrganisation().getName() : null;
+
+        DossierTimelineResponse response = DossierTimelineResponse.builder()
+                .dossierNumber(dossier.getDossierNumber())
+                .procedureName(procedure.getName())
+                .organisationName(orgName)
+                .dossierStatus(dossier.getStatus())
+                .submittedAt(dossier.getSubmittedAt())
+                .completedAt(dossier.getCompletedAt())
+                .steps(steps)
+                .build();
+
+        return ApiResponse.success(response, "Timeline récupérée avec succès");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MÉTHODES PRIVÉES
+    // ─────────────────────────────────────────────────────────────────────────
 
     private Dossier findOrCreateDossier(DossierRequest request, User currentUser) {
         String numeroDossier = request.getNumeroDossier();
@@ -265,8 +343,7 @@ public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(Str
 
     private Dossier createNewDossier(String numeroDossier, UUID firstOperationId, User currentUser) {
         Operation firstOperation = operationRepository.findById(firstOperationId)
-//                .filter(Operation::getIsFirstOperation)
-                .orElseThrow(() -> new RuntimeException("L'opération de départ n'est pas une première opération valide."));
+                .orElseThrow(() -> new RuntimeException("Opération introuvable : " + firstOperationId));
 
         Dossier newDossier = Dossier.builder()
                 .dossierNumber(numeroDossier)
@@ -286,184 +363,198 @@ public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(Str
         return dossierRepository.save(newDossier);
     }
 
-//    private Operation determineTargetOperation(DossierRequest request, Operation fromOperation) {
-//        if (request.getSendToNext()) {
-//            return fromOperation.getNextOperations().stream().findFirst().orElse(null);
-//        } else {
-//            UUID previousOpId = request.getPreviousOperationId();
-//            if (previousOpId == null) throw new RuntimeException("Opération précédente requise pour un rejet.");
-//            return fromOperation.getPreviousOperations().stream()
-//                    .filter(op -> op.getId().equals(previousOpId))
-//                    .findFirst()
-//                    .orElseThrow(() -> new RuntimeException("Opération précédente invalide."));
-//        }
-//    }
-
-
-    private List<Operation> determineTargetOperations(
-            DossierRequest request,
-            Operation fromOperation
-    ) {
-
-        // Cas 1 : envoi vers les opérations suivantes (branching possible)
+    /**
+     * Détermine les opérations cibles selon l'action :
+     * - Approbation : opérations suivantes de l'opération courante
+     * - Rejet       : opérations précédentes choisies dans la requête
+     */
+    private List<Operation> determineTargetOperations(DossierRequest request, Operation fromOperation) {
         if (Boolean.TRUE.equals(request.getSendToNext())) {
-
-            Set<Operation> nextOperations = fromOperation.getNextOperations();
-//
-//            if (nextOperations == null || nextOperations.isEmpty()) {
-//                throw new RuntimeException("Aucune opération suivante définie.");
-//            }
-
-            return new ArrayList<>(nextOperations);
+            // Approbation → opérations suivantes (branching possible)
+            Set<Operation> nextOps = fromOperation.getNextOperations();
+            return nextOps != null ? new ArrayList<>(nextOps) : Collections.emptyList();
         }
 
-        // Cas 2 : retour vers une ou plusieurs opérations précédentes
+        // Rejet → opérations précédentes sélectionnées
         List<UUID> previousOpIds = request.getPreviousOperationId();
-
         if (previousOpIds == null || previousOpIds.isEmpty()) {
-            throw new RuntimeException("Au moins une opération précédente est requise pour un rejet.");
+            throw new RuntimeException(
+                    "Au moins une opération précédente doit être sélectionnée pour un rejet.");
         }
 
-        List<Operation> previousOperations = fromOperation.getPreviousOperations().stream()
-                .filter(op -> previousOpIds.contains(op.getId()))
-                .toList();
+        Set<Operation> previousOps = fromOperation.getPreviousOperations();
+        List<Operation> targets = previousOps != null
+                ? previousOps.stream()
+                        .filter(op -> previousOpIds.contains(op.getId()))
+                        .collect(Collectors.toList())
+                : Collections.emptyList();
 
-        if (previousOperations.isEmpty()) {
-            throw new RuntimeException("Aucune opération précédente valide trouvée.");
+        if (targets.isEmpty()) {
+            throw new RuntimeException(
+                    "Les opérations précédentes sélectionnées sont invalides pour cette opération.");
         }
 
-        return previousOperations;
+        return targets;
     }
 
+    /**
+     * Crée l'entrée d'historique pour cette action.
+     */
+    private DossierHistorique createDossierHistory(DossierRequest request, Dossier dossier,
+            User user, Operation from, List<Operation> targets, boolean isApproval) {
 
-    private DossierHistorique createDossierHistory(DossierRequest request, Dossier dossier, User user, Operation from, List<Operation> target) {
-        DossierStatus newStatus = determineNewStatus(from, target);
+        DossierStatus histStatus = determineNewStatus(from, targets, isApproval);
 
         DossierHistorique historique = DossierHistorique.builder()
                 .dossier(dossier)
                 .user(user)
                 .fromOperation(from)
-                .targetOperations(target)
+                .targetOperations(targets)
                 .comment(request.getCommentaire())
-                .actionType(request.getSendToNext() ? DossierActionType.SUBMIT : DossierActionType.REJECT)
-                .status(newStatus)
+                .actionType(isApproval ? DossierActionType.SUBMIT : DossierActionType.REJECT)
+                .status(histStatus)
                 .build();
 
         return dossierHistoriqueRepository.save(historique);
     }
 
-    private void updateCurrentStep(DossierOperation currentStep, DossierRequest request, User currentUser) {
-        currentStep.setStatus(request.getSendToNext() ? DossierOperationStatus.COMPLETED : DossierOperationStatus.REJECTED);
+    /**
+     * Marque l'étape courante COMPLETED (approbation) ou REJECTED (rejet).
+     */
+    private void updateCurrentStep(DossierOperation currentStep, boolean isApproval,
+            User processedBy, String comment) {
+        currentStep.setStatus(isApproval ? DossierOperationStatus.COMPLETED : DossierOperationStatus.REJECTED);
         currentStep.setCompletedAt(LocalDateTime.now());
-        currentStep.setProcessedBy(currentUser);
-        currentStep.setComment(request.getCommentaire());
+        currentStep.setProcessedBy(processedBy);
+        currentStep.setComment(comment);
         dossierOperationRepository.save(currentStep);
     }
 
-//    private void createNewStep(Dossier dossier, Operation targetOperation) {
-//        DossierOperation newStep = DossierOperation.builder()
-//                .dossier(dossier)
-//                .operation(targetOperation)
-//                .status(DossierOperationStatus.PENDING)
-//                .build();
-//        dossier.addOperationStep(newStep);
-//    }
+    /**
+     * Lors d'un rejet : passe toutes les étapes PENDING du même dossier
+     * (autres que l'étape en cours de traitement) au statut SKIPPED.
+     *
+     * Cela garantit que les agents des opérations en aval ne voient plus
+     * ce dossier dans leur file d'attente.
+     */
+    private void cancelOtherPendingSteps(Dossier dossier, DossierOperation processedStep) {
+        List<DossierOperation> allSteps = dossierOperationRepository
+                .findByDossierIdOrderByReceivedAtAsc(dossier.getId());
 
+        List<DossierOperation> toCancel = allSteps.stream()
+                .filter(step ->
+                        step.getStatus() == DossierOperationStatus.PENDING
+                        && !step.getId().equals(processedStep.getId()))
+                .collect(Collectors.toList());
 
-    private void createNewSteps(Dossier dossier, List<Operation> targetOperations) {
-        if (targetOperations == null || targetOperations.isEmpty()) {
-            return;
+        if (toCancel.isEmpty()) return;
+
+        for (DossierOperation step : toCancel) {
+            step.setStatus(DossierOperationStatus.SKIPPED);
+            step.setCompletedAt(LocalDateTime.now());
+            log.info("Étape PENDING annulée (SKIPPED) à l'opération {} suite au rejet à {}",
+                    step.getOperation().getId(), processedStep.getOperation().getId());
         }
 
+        dossierOperationRepository.saveAll(toCancel);
+    }
+
+    /**
+     * Crée une nouvelle étape PENDING pour chaque opération cible,
+     * en évitant les doublons : si une étape PENDING existe déjà
+     * pour cette opération, on ne la recrée pas.
+     */
+    private void createNewStepsNoDuplicate(Dossier dossier, List<Operation> targetOperations) {
+        if (targetOperations == null || targetOperations.isEmpty()) return;
+
+        // IDs des opérations ayant déjà une étape PENDING active
+        Set<UUID> alreadyPending = dossier.getOperationSteps().stream()
+                .filter(step -> step.getStatus() == DossierOperationStatus.PENDING)
+                .map(step -> step.getOperation().getId())
+                .collect(Collectors.toSet());
+
         for (Operation target : targetOperations) {
+            if (alreadyPending.contains(target.getId())) {
+                log.info("Étape PENDING déjà existante pour l'opération {} – doublon ignoré.",
+                        target.getId());
+                continue;
+            }
+
             DossierOperation newStep = DossierOperation.builder()
                     .dossier(dossier)
                     .operation(target)
                     .status(DossierOperationStatus.PENDING)
                     .build();
             dossier.addOperationStep(newStep);
+            log.info("Nouvelle étape PENDING créée pour l'opération {}.", target.getId());
         }
     }
 
+    /**
+     * Met à jour le statut global du dossier :
+     * - Approbation + dernière opération + pas de suivants → COMPLETED
+     * - Approbation avec opérations suivantes               → IN_PROGRESS
+     * - Rejet avec opérations précédentes                   → IN_PROGRESS (retour en arrière)
+     * - Rejet sans opérations précédentes (premier niveau)  → REJECTED
+     */
+    private void updateDossierGlobalStatus(Dossier dossier, List<Operation> targetOperations,
+            Operation fromOperation, boolean isApproval) {
 
-    private void updateDossierGlobalStatus(
-            Dossier dossier,
-            List<Operation> targetOperations,
-            Operation fromOperation
-    ) {
         if (targetOperations == null || targetOperations.isEmpty()) {
-            if (Boolean.TRUE.equals(fromOperation.getIsLastOperation())) {
+            if (isApproval && Boolean.TRUE.equals(fromOperation.getIsLastOperation())) {
                 dossier.setStatus(DossierStatus.COMPLETED);
                 dossier.setCompletedAt(LocalDateTime.now());
+                log.info("Dossier {} COMPLETED – dernière opération approuvée.", dossier.getDossierNumber());
             } else {
+                // Rejet sans opération précédente possible → rejet définitif
                 dossier.setStatus(DossierStatus.REJECTED);
+                log.info("Dossier {} REJECTED définitivement.", dossier.getDossierNumber());
             }
         } else {
+            // Des cibles existent → le dossier continue son traitement
             dossier.setStatus(DossierStatus.IN_PROGRESS);
         }
     }
 
-//
-//    private void updateDossierGlobalStatus(Dossier dossier, Operation targetOperation, Operation fromOperation) {
-//        if (targetOperation == null) {
-//            if (fromOperation.getIsLastOperation()) {
-//                dossier.setStatus(DossierStatus.COMPLETED);
-//                dossier.setCompletedAt(LocalDateTime.now());
-//            } else {
-//                dossier.setStatus(DossierStatus.REJECTED);
-//            }
-//        } else {
-//            dossier.setStatus(DossierStatus.IN_PROGRESS);
-//        }
-//    }
-
-//    private DossierStatus determineNewStatus(Operation from, Operation target) {
-//        if (target == null) {
-//            if (from.getIsLastOperation()) {
-//                return DossierStatus.COMPLETED;
-//            } else {
-//                return DossierStatus.REJECTED;
-//            }
-//        } else {
-//            return DossierStatus.IN_PROGRESS;
-//        }
-//    }
-
-
-    private DossierStatus determineNewStatus(
-            Operation from,
-            List<Operation> targets
-    ) {
+    /**
+     * Détermine le statut à enregistrer dans l'historique de cette action.
+     */
+    private DossierStatus determineNewStatus(Operation from, List<Operation> targets, boolean isApproval) {
         if (targets == null || targets.isEmpty()) {
-            return Boolean.TRUE.equals(from.getIsLastOperation())
-                    ? DossierStatus.COMPLETED
-                    : DossierStatus.REJECTED;
+            if (isApproval && Boolean.TRUE.equals(from.getIsLastOperation())) {
+                return DossierStatus.COMPLETED;
+            }
+            return DossierStatus.REJECTED;
         }
         return DossierStatus.IN_PROGRESS;
     }
-
 
     private String generateNumeroDossier() {
         return "DOS-" + System.currentTimeMillis();
     }
 
-
-
+    private String buildCitoyenName(Dossier dossier) {
+        if (dossier.getCreatedBy() != null) {
+            return String.format("%s %s",
+                    Optional.ofNullable(dossier.getCreatedBy().getFirstName()).orElse(""),
+                    Optional.ofNullable(dossier.getCreatedBy().getLastName()).orElse("")).trim();
+        }
+        if (dossier.getUser() != null) {
+            return String.format("%s %s",
+                    Optional.ofNullable(dossier.getUser().getFirstName()).orElse(""),
+                    Optional.ofNullable(dossier.getUser().getLastName()).orElse("")).trim();
+        }
+        return "";
+    }
 
     private ChampOperationResponseDto buildChampOperationDto(ChampOperation champ) {
-
         List<OptionChampOperationResponse> optionDtos = new ArrayList<>();
-
         if (champ.getOptions() != null) {
             for (OptionChampOperation option : champ.getOptions()) {
-                optionDtos.add(
-                        OptionChampOperationResponse.builder()
-                                .id(option.getId())
-//                                .code(option.getCode())
-                                .label(option.getLabel())
-//                                .order(option.getOrder())
-                                .build()
-                );
+                optionDtos.add(OptionChampOperationResponse.builder()
+                        .id(option.getId())
+                        .label(option.getLabel())
+                        .build());
             }
         }
 
@@ -485,11 +576,4 @@ public ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(Str
                 .options(optionDtos)
                 .build();
     }
-
-
-
-
-
-
-
 }

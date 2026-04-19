@@ -12,6 +12,7 @@ import com.deliacte.repository.OptionChampOperationRepository;
 import com.deliacte.service.OptionChampOperationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class OptionChampOperationServiceImpl implements OptionChampOperationService {
 
     private final OptionChampOperationRepository optionRepository;
@@ -31,26 +33,42 @@ public class OptionChampOperationServiceImpl implements OptionChampOperationServ
 
     @Override
     public ApiResponse<OptionChampOperationResponse> create(OptionChampOperationRequest request) {
-        ChampOperation champOperation = champOperationRepository.findById(request.getChampOperationId())
-                .orElseThrow(() -> new RuntimeException("ChampOperation introuvable"));
 
-        // ⚠️ Si l'option est définie comme default → retirer le default des autres
-        if (Boolean.TRUE.equals(request.getIsDefault())) {
-            champOperationRepository.unsetDefaultByChampOperation(champOperation.getId());
+        try {
+
+            ChampOperation champOperation = champOperationRepository
+                    .findById(request.getChampOperationId())
+                    .orElseThrow(() -> new RuntimeException("ChampOperation introuvable"));
+
+            // Si l'option est définie comme default → retirer le default des autres
+            if (Boolean.TRUE.equals(request.getIsDefault())) {
+                champOperationRepository.unsetDefaultByChampOperation(champOperation.getId());
+            }
+
+            OptionChampOperation option = OptionChampOperation.builder()
+                    .label(request.getLabel())
+                    .value(request.getValue())
+                    .ordre(request.getOrdre())
+                    .orderIndex(request.getOrderIndex())
+                    .isDefault(Boolean.TRUE.equals(request.getIsDefault()))
+                    .champOperation(champOperation)
+                    .build();
+
+            optionRepository.save(option);
+
+            return ApiResponse.success(
+                    mapToResponse(option),
+                    "Option créée avec succès"
+            );
+
+        } catch (Exception e) {
+
+            log.error("Erreur lors de la création de l'option ChampOperation", e);
+
+            return ApiResponse.error(
+                    "Erreur lors de la création de l'option : " + e.getMessage()
+            );
         }
-
-        OptionChampOperation option = OptionChampOperation.builder()
-                .label(request.getLabel())
-                .value(request.getValue())
-                .ordre(request.getOrdre())
-                .orderIndex(request.getOrderIndex())
-                .isDefault(Boolean.TRUE.equals(request.getIsDefault()))
-                .champOperation(champOperation)
-               .build();
-
-        optionRepository.save(option);
-
-        return ApiResponse.success(mapToResponse(option), "Option créée avec succès");
     }
 
     @Override

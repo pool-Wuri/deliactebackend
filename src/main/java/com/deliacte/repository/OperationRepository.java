@@ -49,7 +49,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
     JOIN u.organisations org
     JOIN org.procedures p
     JOIN p.operations o
-    WHERE u.id = :userId
+    WHERE u.id = :userId AND o.deleted = false
 """)
     List<Operation> findOperationsFromUserOrganisations(UUID userId);
 
@@ -58,7 +58,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
     FROM User u
     JOIN u.procedures p
     JOIN p.operations o
-    WHERE u.id = :userId
+    WHERE u.id = :userId AND o.deleted = false
 """)
     List<Operation> findOperationsFromUserProcedures(UUID userId);
 
@@ -66,7 +66,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
     SELECT DISTINCT o
     FROM Operation o
     JOIN o.users u
-    WHERE u.id = :userId  
+    WHERE u.id = :userId AND o.deleted = false
 """)
     List<Operation> findOperationsFromUserAgent(UUID userId);
 
@@ -75,7 +75,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
     SELECT DISTINCT o
     FROM Procedure p
     JOIN p.operations o
-    WHERE p.id = :procedureId
+    WHERE p.id = :procedureId AND o.deleted = false
 """)
     List<Operation> findOperationsByProcedureId(UUID procedureId);
 
@@ -84,7 +84,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
     FROM Organisation org
     JOIN org.procedures p
     JOIN p.operations o
-    WHERE org.id = :organisationId
+    WHERE org.id = :organisationId AND o.deleted = false
 """)
     List<Operation> findOperationsByOrganisationId(UUID organisationId);
 
@@ -97,7 +97,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
         SELECT o2
         FROM Operation o
         JOIN o.nextOperations o2
-        WHERE o.id = :operationId
+        WHERE o.id = :operationId AND o2.deleted = false
     """)
     List<Operation> findNextOperations(UUID operationId);
 
@@ -108,7 +108,7 @@ public interface OperationRepository extends JpaRepository<Operation, UUID> {
         SELECT o2
         FROM Operation o
         JOIN o.previousOperations o2
-        WHERE o.id = :operationId
+        WHERE o.id = :operationId AND o2.deleted = false
     """)
     List<Operation> findPreviousOperations(UUID operationId);
 

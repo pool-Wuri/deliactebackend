@@ -17,6 +17,7 @@ public class ParameterSeeder {
     private final ParameterRepository parameterRepository;
 
     @Bean
+    @org.springframework.core.annotation.Order(1)
     CommandLineRunner seedParameters() {
         return args -> {
 

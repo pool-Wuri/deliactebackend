@@ -1,14 +1,9 @@
 package com.deliacte.service.impl;
 
-import com.deliacte.dto.ApiResponse;
-import com.deliacte.dto.response.DashboardStatsResponse;
+import com.deliacte.dto.*;
+import com.deliacte.dto.response.*;
 import com.deliacte.entity.User;
-import com.deliacte.enums.DossierStatus;
-import com.deliacte.enums.UserRole;
 import com.deliacte.exception.ResourceNotFoundException;
-import com.deliacte.repository.DossierRepository;
-import com.deliacte.repository.OrganisationRepository;
-import com.deliacte.repository.ProcedureRepository;
 import com.deliacte.repository.UserRepository;
 import com.deliacte.repository.stats.*;
 import com.deliacte.security.SecurityUtils;
@@ -17,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -79,6 +75,100 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         return ApiResponse.success(stats, "Statistiques récupérées avec succès");
     }
+
+
+
+
+
+
+
+
+
+
+    @Override
+    public ApiResponse<DashboardStatsResponse1> getStats() {
+
+        UUID currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            return ApiResponse.error("Utilisateur non connecté");
+        }
+
+        User creator = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+
+        DashboardStatsResponse1 stats;
+
+        switch (creator.getRole()) {
+            case SUPER_ADMIN -> {
+                DossierStatsProjection dossierStats = dossierStatsRepository.countAllDossiers();
+
+                stats = DashboardStatsResponse1.builder()
+                        .totalUsers(userStatsRepository.countAllUsers())
+                        .totalOrganisations(organisationStatsRepository.countAllOrganisations())
+                        .totalProcedures(procedureStatsRepository.countAllProcedures())
+                        .dossiers(DossierStatsDto.fromProjection(dossierStats))
+                        .monthlyCreated(dossierStatsRepository.monthlyCreated())
+                        .monthlyCompleted(dossierStatsRepository.monthlyCompleted())
+                        .monthlyPending(dossierStatsRepository.monthlyPending())
+                        .monthlyRejected(dossierStatsRepository.monthlyRejected())
+                        .monthlySkipped(dossierStatsRepository.monthlySkipped())
+                        .repartitionParType(dossierStatsRepository.countByProcedure())
+                        .dossiersParOrganisation(dossierStatsRepository.countByOrganisation())
+                        .build();
+            }
+            case RESPONSABLE_ORGANISATION -> {
+                DossierStatsProjection dossierStats = dossierStatsRepository.countByUserOrganisations(currentUserId);
+
+                stats = DashboardStatsResponse1.builder()
+                        .totalUsers(userStatsRepository.countUsersByOrganisationOfUser(currentUserId))
+                        .totalOrganisations(organisationStatsRepository.countOrganisationsByResponsibleOrganisation(currentUserId))
+                        .totalProcedures(procedureStatsRepository.countProceduresByOrganisationOfUser(currentUserId))
+                        .dossiers(DossierStatsDto.fromProjection(dossierStats))
+                        .monthlyCreated(dossierStatsRepository.monthlyCreatedByUserOrganisations(currentUserId))
+                        .monthlyCompleted(dossierStatsRepository.monthlyCompletedByUserOrganisations(currentUserId))
+                        .monthlyPending(dossierStatsRepository.monthlyPendingByUserOrganisations(currentUserId))
+                        .monthlyRejected(dossierStatsRepository.monthlyRejectedByUserOrganisations(currentUserId))
+                        .monthlySkipped(dossierStatsRepository.monthlySkippedByUserOrganisations(currentUserId))
+                        .repartitionParType(dossierStatsRepository.countByProcedureUserOrganisations(currentUserId))
+                        .dossiersParOrganisation(dossierStatsRepository.countByOrganisationUserOrganisations(currentUserId))
+                        .build();
+            }
+            case ADMIN_PROCEDURE -> {
+                DossierStatsProjection dossierStats = dossierStatsRepository.countByUserProcedures(currentUserId);
+
+                stats = DashboardStatsResponse1.builder()
+                        .totalUsers(userStatsRepository.countUsersByProceduresOfUser(currentUserId))
+                        .totalOrganisations(organisationStatsRepository.countOrganisationsByResponsibleProcedures(currentUserId))
+                        .totalProcedures(procedureStatsRepository.countProceduresAssignedToUser(currentUserId))
+                        .dossiers(DossierStatsDto.fromProjection(dossierStats))
+                        .monthlyCreated(dossierStatsRepository.monthlyCreatedByUserProcedures(currentUserId))
+                        .monthlyCompleted(dossierStatsRepository.monthlyCompletedByUserProcedures(currentUserId))
+                        .monthlyPending(dossierStatsRepository.monthlyPendingByUserProcedures(currentUserId))
+                        .monthlyRejected(dossierStatsRepository.monthlyRejectedByUserProcedures(currentUserId))
+                        .monthlySkipped(dossierStatsRepository.monthlySkippedByUserProcedures(currentUserId))
+                        .repartitionParType(dossierStatsRepository.countByProcedureUserProcedures(currentUserId))
+                        .dossiersParOrganisation(dossierStatsRepository.countByOrganisationUserProcedures(currentUserId))
+                        .build();
+            }
+            default -> {
+                return ApiResponse.error("Rôle non supporté pour les statistiques");
+            }
+        }
+
+        return ApiResponse.success(stats, "Statistiques récupérées avec succès");
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     @Override

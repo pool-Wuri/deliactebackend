@@ -23,7 +23,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
     
     Boolean existsByEmailAndDeletedFalse(String email);
-    
+
+    boolean existsByEmailAndIdNot(String email, UUID id);
+    boolean existsByTelephoneAndIdNot(String telephone, UUID id);
+
+
     Boolean existsByEmail(String email);
 
     // === Recherche par téléphone ===

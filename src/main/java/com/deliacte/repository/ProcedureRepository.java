@@ -28,6 +28,14 @@ public interface ProcedureRepository extends JpaRepository<Procedure, UUID> {
 
     Page<Procedure> findByIsPublicTrueAndStatusAndDeletedFalse(ProcedureStatus status, Pageable pageable);
 
+    @Query("SELECT p FROM Procedure p WHERE p.deleted = false AND p.isPublic = true AND p.status = 'PUBLISHED' AND " +
+           "(:search IS NULL OR :search = '' OR " +
+           "LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(p.code) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(p.organisation.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Procedure> searchPublicProcedures(@Param("search") String search, Pageable pageable);
+
     Page<Procedure> findByOrganisationIdAndDeletedFalse(UUID organisationId, Pageable pageable);
     List<Procedure> findByOrganisationIdAndDeletedFalse(UUID organisationId);
 

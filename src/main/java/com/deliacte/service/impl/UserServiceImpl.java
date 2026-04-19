@@ -4,11 +4,9 @@ import com.deliacte.dto.ApiResponse;
 import com.deliacte.dto.PageResponse;
 import com.deliacte.dto.request.ChangePasswordRequest;
 import com.deliacte.dto.request.IdListRequest;
+import com.deliacte.dto.request.UpdateProfileRequest;
 import com.deliacte.dto.request.UserRequest;
-import com.deliacte.dto.response.OperationSimpleResponse;
-import com.deliacte.dto.response.OrganisationSimpleResponse;
-import com.deliacte.dto.response.ProcedureSimpleResponse;
-import com.deliacte.dto.response.UserResponse;
+import com.deliacte.dto.response.*;
 import com.deliacte.entity.Operation;
 import com.deliacte.entity.Organisation;
 import com.deliacte.entity.Procedure;
@@ -388,6 +386,93 @@ public class UserServiceImpl implements UserService {
     }
 
 
+
+    @Transactional
+    @Override
+    public ApiResponse<UserProfileResponse> updateProfile(UUID userId, UpdateProfileRequest request) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+
+        // Email : vérifier qu'il n'est pas déjà pris par un autre compte
+        if (!user.getEmail().equalsIgnoreCase(request.getEmail())) {
+            if (userRepository.existsByEmailAndIdNot(request.getEmail(), userId)) {
+                return ApiResponse.error("Cet email est déjà utilisé par un autre compte");
+            }
+        }
+
+        // Téléphone : même vérification
+        if (request.getTelephone() != null
+                && !request.getTelephone().equals(user.getTelephone())) {
+            if (userRepository.existsByTelephoneAndIdNot(request.getTelephone(), userId)) {
+                return ApiResponse.error("Ce numéro de téléphone est déjà utilisé");
+            }
+        }
+
+        // ── Infos de base ──
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+        user.setEmail(request.getEmail());
+        if (request.getTelephone() != null) user.setTelephone(request.getTelephone());
+
+        // ── Identité civile ──
+        if (request.getGender()       != null) user.setGender(request.getGender());
+        if (request.getDateOfBirth()  != null) user.setDateOfBirth(request.getDateOfBirth());
+        if (request.getPlaceOfBirth() != null) user.setPlaceOfBirth(request.getPlaceOfBirth());
+
+        // ── Localisation ──
+        if (request.getAddress() != null) user.setAddress(request.getAddress());
+        if (request.getCity()    != null) user.setCity(request.getCity());
+        if (request.getCountry() != null) user.setCountry(request.getCountry());
+
+        // ── Statut ──
+        if (request.getUserStatus() != null) user.setUserStatus(request.getUserStatus());
+
+        // ── Identification ──
+        if (request.getIdUniqueBurkinabe()     != null) user.setIdUniqueBurkinabe(request.getIdUniqueBurkinabe());
+        if (request.getPassportNumber()        != null) user.setPassportNumber(request.getPassportNumber());
+        if (request.getNationality()           != null) user.setNationality(request.getNationality());
+        if (request.getResidencePermitNumber() != null) user.setResidencePermitNumber(request.getResidencePermitNumber());
+        if (request.getRefugeeCardNumber()     != null) user.setRefugeeCardNumber(request.getRefugeeCardNumber());
+        if (request.getDiplomaticCardNumber()  != null) user.setDiplomaticCardNumber(request.getDiplomaticCardNumber());
+
+        userRepository.save(user);
+
+        return ApiResponse.success(mapToProfileResponse(user), "Profil mis à jour avec succès");
+    }
+
+    private UserProfileResponse mapToProfileResponse(User user) {
+        return UserProfileResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .telephone(user.getTelephone())
+                .gender(user.getGender())
+                .dateOfBirth(user.getDateOfBirth())
+                .placeOfBirth(user.getPlaceOfBirth())
+                .address(user.getAddress())
+                .city(user.getCity())
+                .country(user.getCountry())
+                .userStatus(user.getUserStatus())
+                .role(user.getRole())
+                .emailVerified(user.isEmailVerified())
+                .phoneVerified(user.isPhoneVerified())
+                .enabled(user.isEnabled())
+                .idUniqueBurkinabe(user.getIdUniqueBurkinabe())
+                .passportNumber(user.getPassportNumber())
+                .nationality(user.getNationality())
+                .residencePermitNumber(user.getResidencePermitNumber())
+                .refugeeCardNumber(user.getRefugeeCardNumber())
+                .diplomaticCardNumber(user.getDiplomaticCardNumber())
+                .profilePhotoUrl(user.getProfilePhotoUrl())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
+
+
     @Transactional(readOnly = true)
     @Override
     public ApiResponse<PageResponse<UserResponse>> findByOperationId(UUID operationId) {
@@ -405,26 +490,28 @@ public class UserServiceImpl implements UserService {
 
 
     private UserResponse mapToResponse(User user) {
-        Set<OrganisationSimpleResponse> organisations = user.getOrganisations() != null ?
-                user.getOrganisations().stream()
-                        .map(org -> OrganisationSimpleResponse.builder()
-                                .id(org.getId())
-                                .name(org.getName())
-                                .code(org.getCode())
-                                .logoUrl(org.getLogoUrl())
-                                .build())
-                        .collect(Collectors.toSet()) : null;
+        Set<OrganisationSimpleResponse> organisations = user.getOrganisations() != null
+                ? user.getOrganisations().stream()
+                .map(org -> OrganisationSimpleResponse.builder()
+                        .id(org.getId())
+                        .name(org.getName())
+                        .code(org.getCode())
+                        .logoUrl(org.getLogoUrl())
+                        .build())
+                .collect(Collectors.toSet())
+                : null;
 
-        Set<ProcedureSimpleResponse> procedures = user.getProcedures() != null ?
-                user.getProcedures().stream()
-                        .map(proc -> ProcedureSimpleResponse.builder()
-                                .id(proc.getId())
-                                .name(proc.getName())
-                                .code(proc.getCode())
-                                .status(proc.getStatus())
-                                .isPublic(proc.getIsPublic())
-                                .build())
-                        .collect(Collectors.toSet()) : null;
+        Set<ProcedureSimpleResponse> procedures = user.getProcedures() != null
+                ? user.getProcedures().stream()
+                .map(proc -> ProcedureSimpleResponse.builder()
+                        .id(proc.getId())
+                        .name(proc.getName())
+                        .code(proc.getCode())
+                        .status(proc.getStatus())
+                        .isPublic(proc.getIsPublic())
+                        .build())
+                .collect(Collectors.toSet())
+                : null;
 
         Set<OperationSimpleResponse> operations = user.getOperations() != null
                 ? user.getOperations().stream()
@@ -436,28 +523,56 @@ public class UserServiceImpl implements UserService {
                         .prix(op.getFee())
                         .isFirstOperation(op.getIsFirstOperation())
                         .isLastOperation(op.getIsLastOperation())
-                        .build()
-                )
+                        .build())
                 .collect(Collectors.toSet())
                 : null;
 
-
         return UserResponse.builder()
+                // Identité
                 .id(user.getId())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
                 .telephone(user.getTelephone())
-                .role(user.getRole())
                 .userStatus(user.getUserStatus())
+                .userStatusLabel(user.getUserStatus() != null ? user.getUserStatus().getLabel() : null)
+                .role(user.getRole())
+
+                // Informations d'identification
+                .idUniqueBurkinabe(user.getIdUniqueBurkinabe())
+                .passportNumber(user.getPassportNumber())
+                .nationality(user.getNationality())
+                .residencePermitNumber(user.getResidencePermitNumber())
+                .refugeeCardNumber(user.getRefugeeCardNumber())
+                .diplomaticCardNumber(user.getDiplomaticCardNumber())
+
+                // Informations personnelles
+                .dateOfBirth(user.getDateOfBirth())
+                .placeOfBirth(user.getPlaceOfBirth())
+                .gender(user.getGender())
+                .address(user.getAddress())
+                .city(user.getCity())
+                .country(user.getCountry())
+
+                // État du compte
                 .enabled(user.isEnabled())
+
                 .accountNonLocked(user.isAccountNonLocked())
+
+                // Statistiques
                 .connectionCount(user.getConnectionCount())
+                .lastLoginAt(user.getLastLoginAt())
+
+                // Photo
+                .profilePhotoUrl(user.getProfilePhotoUrl())
+
+                // Audit
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+
+                // Relations
                 .organisations(organisations)
                 .procedures(procedures)
                 .operations(operations)
                 .build();
-    }
-}
+    }}

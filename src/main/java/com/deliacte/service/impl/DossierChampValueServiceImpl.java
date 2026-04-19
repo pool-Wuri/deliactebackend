@@ -49,7 +49,7 @@ public class DossierChampValueServiceImpl implements DossierChampValueService {
         DossierChampValue newValue = DossierChampValue.builder()
                 .champOperation(champ)
                 .value(request.getValue())
-//                .filePath(request.getFilePath()) // Ligne décommentée
+                .filePath(request.getFilePath())
                 .dossierHistorique(dossierHistorique)
                 .version(nextVersion)
                 .isActive(true)

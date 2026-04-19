@@ -110,6 +110,15 @@ public class ProcedureServiceImpl implements ProcedureService {
 
     @Override
     @Transactional(readOnly = true)
+    public ApiResponse<PageResponse<ProcedureResponse>> getPublicProcedures(String search, Pageable pageable) {
+        Page<Procedure> page = procedureRepository.searchPublicProcedures(
+                search == null ? "" : search.trim(), pageable);
+        PageResponse<ProcedureResponse> response = PageResponse.of(page.map(this::mapToResponse));
+        return ApiResponse.success(response);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ApiResponse<PageResponse<ProcedureResponse>> getByOrganisation(UUID organisationId, Pageable pageable) {
         Page<Procedure> page = procedureRepository.findByOrganisationIdAndDeletedFalse(organisationId, pageable);
         PageResponse<ProcedureResponse> response = PageResponse.of(page.map(this::mapToResponse));
@@ -259,6 +268,28 @@ public class ProcedureServiceImpl implements ProcedureService {
 
         return ApiResponse.success(mapToResponse(updated), "Procédure mise à jour avec succès");
     }
+
+
+    @Override
+    public ApiResponse<ProcedureResponse> updateDescription(UUID id, String description) {
+
+        Procedure procedure = procedureRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Procédure non trouvée"));
+
+        if (description == null || description.trim().isEmpty()) {
+            return ApiResponse.error("La description ne peut pas être vide");
+        }
+
+        // On conserve le HTML tel qu'il vient de l'éditeur riche
+        procedure.setDescription(description);
+
+        Procedure updated = procedureRepository.save(procedure);
+
+        log.info("Description HTML mise à jour pour la procédure {}", updated.getName());
+
+        return ApiResponse.success(mapToResponse(updated), "Description mise à jour avec succès");
+    }
+
 
     @Override
     public ApiResponse<Void> delete(UUID id) {

@@ -4,7 +4,9 @@ import com.deliacte.dto.ApiResponse;
 import com.deliacte.dto.PageResponse;
 import com.deliacte.dto.request.ChangePasswordRequest;
 import com.deliacte.dto.request.IdListRequest;
+import com.deliacte.dto.request.UpdateProfileRequest;
 import com.deliacte.dto.request.UserRequest;
+import com.deliacte.dto.response.UserProfileResponse;
 import com.deliacte.dto.response.UserResponse;
 import com.deliacte.enums.UserRole;
 import org.springframework.data.domain.Pageable;
@@ -61,6 +63,9 @@ public interface UserService {
 
     @Transactional(readOnly = true)
     ApiResponse<PageResponse<UserResponse>> getUsersOrCreatedByMe(Pageable pageable);
+
+    @Transactional
+    ApiResponse<UserProfileResponse> updateProfile(UUID userId, UpdateProfileRequest request);
 
     @Transactional(readOnly = true)
     ApiResponse<PageResponse<UserResponse>> findByOperationId(UUID operationId);

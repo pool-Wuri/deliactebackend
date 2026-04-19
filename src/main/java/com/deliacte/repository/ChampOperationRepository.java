@@ -79,6 +79,7 @@ ORDER BY co.order
     @Query("SELECT c FROM ChampOperation c " +
             "WHERE c.operation.procedure.id = :procedureId " +
             "AND c.entityObject IS NOT NULL " +
+            "AND c.deleted = false " +
             "ORDER BY c.orderIndex ASC")
     List<ChampOperation> findByProcedureGroupedByEntity(@Param("procedureId") UUID procedureId);
 
@@ -88,6 +89,7 @@ ORDER BY co.order
     @Query("SELECT c FROM ChampOperation c " +
             "WHERE c.operation.procedure.id = :procedureId " +
             "AND c.entityObject IS NULL " +
+            "AND c.deleted = false " +
             "ORDER BY c.orderIndex ASC")
     List<ChampOperation> findGlobalByProcedure(@Param("procedureId") UUID procedureId);
 

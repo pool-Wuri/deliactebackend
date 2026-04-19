@@ -23,6 +23,8 @@ public interface ProcedureService {
 
     ApiResponse<PageResponse<ProcedureResponse>> getAll(Pageable pageable);
 
+    ApiResponse<ProcedureResponse> updateDescription(UUID id, String description);
+
     ApiResponse<Void> delete(UUID id);
 
     // === Recherche par organisation ===
@@ -33,6 +35,8 @@ public interface ProcedureService {
 
     // === Procédures publiques ===
     ApiResponse<PageResponse<ProcedureResponse>> getPublicProcedures(Pageable pageable);
+
+    ApiResponse<PageResponse<ProcedureResponse>> getPublicProcedures(String search, Pageable pageable);
 
 
 

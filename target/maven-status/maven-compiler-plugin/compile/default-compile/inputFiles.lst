@@ -1,6 +1,7 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/DossierController.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/entity/DossierChampValue.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/PaymentRepository.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/ResendVerificationRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/TypeOperationService.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/UserSimpleResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/exception/ResourceNotFoundException.java
@@ -11,9 +12,11 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/OrganisationResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/impl/DossierChampValueServiceImpl.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/stats/OrganisationStatsRepository.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/MonthlyCreatedProjection.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/ParameterController.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/impl/ArzekaPaymentServiceImpl.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/impl/UserServiceImpl.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/UpdateProfileRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/OrganisationService.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/utils/FileNameUtil.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/AuthController.java
@@ -33,6 +36,7 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/UserRole.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/EntityObjectWithChampOperationDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/AuthService.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/ResetPasswordRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/entity/AbstractEntity.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/utils/FileStorageUtil.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/EntityObjectRepository.java
@@ -44,6 +48,7 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/DossierOperationStatus.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/DossierRepository.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/ArzekaPaymentController.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/UserProfileResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/impl/AuthServiceImpl.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/ParameterRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/ParameterRepository.java
@@ -62,7 +67,9 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/ParameterResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/OrganisationRepository.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/EntityObjectController.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/MonthlyStatsDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/DossierService.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DossierStatsDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/ProcedureSimpleResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DossierResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/DossierChampValueRequest.java
@@ -70,7 +77,9 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/exception/UnauthorizedException.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/ChampOperationRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/AuthResponse.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/utils/EmailService.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/DossierOperationRepository.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/TypeStatsProjection.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/DossierChampValueRepository.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/DossierActionType.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/OrganisationRequest.java
@@ -86,7 +95,10 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/PaymentRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/ProcedureService.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/ProcedureResponse.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DashboardStatsResponse1.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/OrganisationStatsProjection.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/impl/EntityObjectServiceImpl.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DossierTimelineResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/ChampOperationResponseDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/DossierStatus.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/ChampOperationController.java
@@ -121,6 +133,7 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/TypeOperationRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/service/ArzekaPaymentService.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/ProcedureStatus.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/MonthlyStatusProjection.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/RegisterRequest.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/entity/DossierOperation.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/request/EntityObjectRequest.java
@@ -129,7 +142,9 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/entity/Procedure.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/config/AsyncConfig.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/OperationController.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/OrganisationStatsDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/OperationSimpleResponse.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/TypeStatsDto.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/ChampOperationRepository.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/PageResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/enums/EnumInputFieldType.java
@@ -139,6 +154,7 @@
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DossierChampValueResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/entity/ChampOperation.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/controller/DossierChampHistoryController.java
+/Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/DossierOperationStepResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/stats/OperationStatsRepository.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/dto/response/PaymentResponse.java
 /Users/severindembele/Documents/CodePool2025/VersionFinalDeliacte/backendForDeliacte/src/main/java/com/deliacte/repository/stats/ProcedureStatsRepository.java

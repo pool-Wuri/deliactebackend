@@ -22,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -120,12 +121,13 @@ public class ProcedureController {
 
 
     @GetMapping("/public")
-    @Operation(summary = "Lister les procédures publiques (public)")
+    @Operation(summary = "Lister les procédures publiques avec recherche optionnelle")
     public ResponseEntity<ApiResponse<PageResponse<ProcedureResponse>>> getPublicProcedures(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false, defaultValue = "") String search) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return ResponseEntity.ok(procedureService.getPublicProcedures(pageable));
+        return ResponseEntity.ok(procedureService.getPublicProcedures(search, pageable));
     }
 
 
@@ -138,6 +140,16 @@ public class ProcedureController {
         return ResponseEntity.ok(procedureService.getAllTop6(pageable));
     }
 
+
+    @PatchMapping("/{id}/description")
+    public ApiResponse<ProcedureResponse> updateDescription(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body) {
+
+        String description = body.get("description");
+
+        return procedureService.updateDescription(id, description);
+    }
 
 
     @GetMapping("/organisation/{organisationId}")
@@ -169,13 +181,15 @@ public class ProcedureController {
     }
 
     @GetMapping("/search")
-    @Operation(summary = "Rechercher des procédures")
+    @Operation(summary = "Rechercher des procédures (toutes, admin)")
     public ResponseEntity<ApiResponse<PageResponse<ProcedureResponse>>> searchProcedures(
-            @RequestParam String q,
+            @RequestParam(required = false, defaultValue = "") String search,
+            @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
+        String query = (q != null && !q.isBlank()) ? q : search;
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return ResponseEntity.ok(procedureService.search(q, pageable));
+        return ResponseEntity.ok(procedureService.search(query, pageable));
     }
 
     @DeleteMapping("/{id}")

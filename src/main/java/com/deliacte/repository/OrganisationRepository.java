@@ -52,14 +52,13 @@ public interface OrganisationRepository extends JpaRepository<Organisation, UUID
      * Organisations + procédures par email utilisateur
      */
     @Query("""
-        SELECT DISTINCT o
-        FROM Organisation o
-        JOIN FETCH o.procedures p
-        JOIN o.users u
-        WHERE u.email = :email
-    """)
+    SELECT DISTINCT o
+    FROM Organisation o
+    JOIN o.users u
+    LEFT JOIN FETCH o.procedures p
+    WHERE u.email = :email
+""")
     List<Organisation> findOrganisationsWithProceduresByUserEmail(String email);
-
 
     Optional<Organisation> findByCode(String s);
 }
