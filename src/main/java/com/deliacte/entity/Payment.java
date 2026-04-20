@@ -60,6 +60,12 @@ public class Payment extends AbstractEntity {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "validated_by_name")
+    private String validatedByName;
+
+    @Column(name = "manual_note", columnDefinition = "TEXT")
+    private String manualNote;
+
     // Relations hybrides
     @ManyToOne(fetch = FetchType.LAZY)
     private Dossier dossier;

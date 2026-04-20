@@ -1,25 +1,28 @@
 package com.deliacte.service.impl;
 
-
 import com.deliacte.dto.request.PaymentRequest;
 import com.deliacte.dto.response.PaymentResponse;
 import com.deliacte.entity.Dossier;
 import com.deliacte.entity.DossierOperation;
 import com.deliacte.entity.Payment;
-import com.deliacte.repository.DossierRepository;
 import com.deliacte.repository.DossierOperationRepository;
+import com.deliacte.repository.DossierRepository;
 import com.deliacte.repository.PaymentRepository;
 import com.deliacte.service.ArzekaPaymentService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ArzekaPaymentServiceImpl implements ArzekaPaymentService {
@@ -31,96 +34,196 @@ public class ArzekaPaymentServiceImpl implements ArzekaPaymentService {
     @Value("${arzeka.merchant.id:174}")
     private String merchantId;
 
-    @Value("${arzeka.token:YOUR_SECURED_ACCESS_TOKEN}")
+    @Value("${arzeka.token:eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiI1UzNaOVQ4MzAxIiwiaWF0IjoxNzIwMDA4ODI5LCJzdWIiOiIyMjYwMDAwMDAxNiIsImlzcyI6ImFyemVrYSIsIlBBWUxPQUQiOiJhY2Nlc3NfdG9rZW4iLCJleHAiOjE3ODMwODA4Mjl9.BZRA8xd0nh_H8JfyTteXTrtmjPT2hWKmTsZavRYQSJoDFW97ik5rR5SyhLmTr9nzmDQ2MHA24qGbtgH9djK4Lg}")
     private String securedAccessToken;
 
     @Value("${arzeka.base.url:https://pgw-test.fasoarzeka.bf}")
     private String baseUrl;
 
-    @Value("${app.callback.url:http://localhost:8090/api/payments/callback}")
-    private String callbackUrl;
+    /** URL backend appelée par Arzeka côté serveur (linkForUpdateStatus) */
+    @Value("${app.arzeka.update-url:http://localhost:8090/v1/payments/arzeka/return}")
+    private String updateStatusUrl;
 
-    /**
-     * Initier un paiement sur un dossier (hybride).
-     */
+    /** URL backend de retour citoyen après paiement Arzeka (linkBackToCallingWebsite) */
+    @Value("${app.arzeka.return-url:http://localhost:8090/v1/payments/arzeka/return}")
+    private String returnUrl;
+
+    /** URL frontend pour rediriger le citoyen après callback */
+    @Value("${app.frontend.url:http://localhost:5173}")
+    private String frontendUrl;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admin / hybride
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     public String initiatePaymentOnDossier(String dossierId, PaymentRequest dto) {
         Dossier dossier = dossierRepository.findByDossierNumber(dossierId)
                 .orElseThrow(() -> new IllegalArgumentException("Dossier not found"));
 
-        // Vérifier qu’aucun paiement n’existe déjà sur une opération
         if (paymentRepository.existsByDossierOperation_Dossier(dossier)) {
             throw new IllegalStateException("Paiement déjà effectué sur une opération.");
         }
-
-        // Vérifier qu’aucun paiement n’existe déjà sur le dossier
         if (paymentRepository.existsByDossier(dossier)) {
             throw new IllegalStateException("Paiement déjà effectué sur ce dossier.");
         }
 
         String mappedOrderId = generateMappedOrderId();
+        String url = buildPaymentUrl(dto.getMsisdn(), dto.getAmount(), mappedOrderId, returnUrl);
 
-        String url = buildPaymentUrl(dto.getMsisdn(), dto.getAmount(), mappedOrderId);
-
-        Payment payment = Payment.builder()
+        paymentRepository.save(Payment.builder()
                 .dossier(dossier)
                 .msisdn(dto.getMsisdn())
                 .amount(dto.getAmount())
                 .merchantId(merchantId)
                 .mappedOrderId(mappedOrderId)
                 .status("PENDING")
-                .build();
-
-        paymentRepository.save(payment);
+                .thirdPartyModule("ARZEKA")
+                .createdAt(LocalDateTime.now())
+                .build());
 
         return url;
     }
 
-    /**
-     * Initier un paiement sur une opération (hybride).
-     */
     @Override
     public String initiatePaymentOnOperation(UUID operationId, PaymentRequest dto) {
         DossierOperation operation = dossierOperationRepository.findById(operationId)
                 .orElseThrow(() -> new IllegalArgumentException("Operation not found"));
 
-        // Vérifier qu’aucun paiement n’existe déjà sur le dossier global
         if (paymentRepository.existsByDossier(operation.getDossier())) {
             throw new IllegalStateException("Paiement déjà effectué sur le dossier.");
         }
-
-        // Vérifier qu’aucun paiement n’existe déjà sur cette opération
         if (paymentRepository.existsByDossierOperation(operation)) {
             throw new IllegalStateException("Paiement déjà effectué sur cette opération.");
         }
 
         String mappedOrderId = generateMappedOrderId();
+        String url = buildPaymentUrl(dto.getMsisdn(), dto.getAmount(), mappedOrderId, returnUrl);
 
-        String url = buildPaymentUrl(dto.getMsisdn(), dto.getAmount(), mappedOrderId);
-
-        Payment payment = Payment.builder()
+        paymentRepository.save(Payment.builder()
                 .dossierOperation(operation)
                 .msisdn(dto.getMsisdn())
                 .amount(dto.getAmount())
                 .merchantId(merchantId)
                 .mappedOrderId(mappedOrderId)
                 .status("PENDING")
-                .build();
-
-        paymentRepository.save(payment);
+                .thirdPartyModule("ARZEKA")
+                .createdAt(LocalDateTime.now())
+                .build());
 
         return url;
     }
 
-    /**
-     * Vérifie le statut d’un paiement auprès d’ARZEKA et met à jour la base.
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // Citoyen : montant automatique depuis le fee configuré
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    public String initiateCitizenPaymentForDossier(String dossierNumber, String msisdn) {
+        Dossier dossier = dossierRepository.findByDossierNumber(dossierNumber)
+                .orElseThrow(() -> new IllegalArgumentException("Dossier introuvable : " + dossierNumber));
+
+        BigDecimal amount = dossier.getProcedure().getFee();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("Aucun montant configuré pour cette procédure.");
+        }
+
+        // Réutiliser un paiement PENDING existant ou en créer un nouveau
+        Payment existing = paymentRepository.findByDossier(dossier).orElse(null);
+        if (existing != null && "SUCCESS".equalsIgnoreCase(existing.getStatus())
+                && "COMPLETED".equalsIgnoreCase(existing.getPaymentInfo())) {
+            throw new IllegalStateException("Le paiement pour ce dossier est déjà complété.");
+        }
+
+        String mappedOrderId = (existing != null && "PENDING".equalsIgnoreCase(existing.getStatus()))
+                ? existing.getMappedOrderId()
+                : generateMappedOrderId();
+
+        if (existing == null || !"PENDING".equalsIgnoreCase(existing.getStatus())) {
+            paymentRepository.save(Payment.builder()
+                    .dossier(dossier)
+                    .msisdn(msisdn)
+                    .amount(amount)
+                    .merchantId(merchantId)
+                    .mappedOrderId(mappedOrderId)
+                    .status("PENDING")
+                    .thirdPartyModule("ARZEKA")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        log.info("Initiation paiement citoyen dossier {} — montant {} FCFA", dossierNumber, amount);
+        return buildPaymentUrl(msisdn, amount, mappedOrderId, returnUrl + "?dossierNumber=" + dossierNumber);
+    }
+
+    @Override
+    public String initiateCitizenPaymentForOperation(String dossierNumber, UUID dossierOperationId, String msisdn) {
+        Dossier dossier = dossierRepository.findByDossierNumber(dossierNumber)
+                .orElseThrow(() -> new IllegalArgumentException("Dossier introuvable : " + dossierNumber));
+
+        DossierOperation dossierOp = dossierOperationRepository.findById(dossierOperationId)
+                .orElseThrow(() -> new IllegalArgumentException("Étape introuvable : " + dossierOperationId));
+
+        if (!dossierOp.getDossier().getId().equals(dossier.getId())) {
+            throw new IllegalArgumentException("Cette étape n'appartient pas au dossier indiqué");
+        }
+
+        BigDecimal amount = dossierOp.getOperation().getFee();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("Aucun montant configuré pour cette étape.");
+        }
+
+        Payment existing = paymentRepository.findByDossierOperation(dossierOp).orElse(null);
+        if (existing != null && "SUCCESS".equalsIgnoreCase(existing.getStatus())
+                && "COMPLETED".equalsIgnoreCase(existing.getPaymentInfo())) {
+            throw new IllegalStateException("Le paiement pour cette étape est déjà complété.");
+        }
+
+        String mappedOrderId = (existing != null && "PENDING".equalsIgnoreCase(existing.getStatus()))
+                ? existing.getMappedOrderId()
+                : generateMappedOrderId();
+
+        if (existing == null || !"PENDING".equalsIgnoreCase(existing.getStatus())) {
+            paymentRepository.save(Payment.builder()
+                    .dossierOperation(dossierOp)
+                    .msisdn(msisdn)
+                    .amount(amount)
+                    .merchantId(merchantId)
+                    .mappedOrderId(mappedOrderId)
+                    .status("PENDING")
+                    .thirdPartyModule("ARZEKA")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        log.info("Initiation paiement citoyen étape {} dossier {} — montant {} FCFA",
+                dossierOperationId, dossierNumber, amount);
+        return buildPaymentUrl(msisdn, amount, mappedOrderId,
+                returnUrl + "?dossierNumber=" + dossierNumber + "&dossierOperationId=" + dossierOperationId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Check & Callback
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     public PaymentResponse checkPaymentStatus(String mappedOrderId) {
-        String checkUrl = baseUrl + "/AvepayPaymentGatewayUI/avepay-payment/app/getThirdPartyMapInfo?mappedOrderId=" + mappedOrderId;
+        String checkUrl = baseUrl
+                + "/AvepayPaymentGatewayUI/avepay-payment/app/getThirdPartyMapInfo?mappedOrderId="
+                + mappedOrderId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, "Bearer " + securedAccessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
         RestTemplate restTemplate = new RestTemplate();
-        PaymentResponse response = restTemplate.postForObject(checkUrl, null, PaymentResponse.class);
+        ResponseEntity<PaymentResponse> resp = restTemplate.exchange(
+                checkUrl, HttpMethod.POST,
+                new HttpEntity<>(headers),
+                PaymentResponse.class);
+
+        PaymentResponse response = resp.getBody();
+        if (response == null) return PaymentResponse.builder().status("UNKNOWN").build();
 
         Payment payment = paymentRepository.findByMappedOrderId(mappedOrderId)
                 .orElseThrow(() -> new IllegalArgumentException("Payment not found"));
@@ -134,41 +237,22 @@ public class ArzekaPaymentServiceImpl implements ArzekaPaymentService {
         payment.setOrderId(response.getOrderId());
         payment.setThirdPartyModule(response.getThirdPartyModule());
         payment.setThirdPartyTransId(response.getThirdPartyTransId());
-        payment.setThirdPartyRedirectUrl(response.getThirdPartyRedirectUrl());
         payment.setAmount(response.getAmount());
-        payment.setCreatedAt(response.getCreatedAt());
-
-        // Notifier que c’est payé si tout est OK
-        if ("SUCCESS".equalsIgnoreCase(response.getStatus()) &&
-                "COMPLETED".equalsIgnoreCase(response.getPaymentInfo())) {
-            // Ici tu peux notifier le dossier ou l’opération comme payé
-            // Exemple : changer un flag dans Dossier ou DossierOperation
-        }
 
         paymentRepository.save(payment);
-
         return response;
     }
 
-    private String generateMappedOrderId() {
-        String timestamp = String.valueOf(Instant.now().getEpochSecond());
-        return "DELIACTE-" + timestamp + "-" + UUID.randomUUID().toString().substring(0, 5);
-    }
-
     @Override
-    public PaymentResponse updatePaymentFromCallback(String status,
-                                                     String transTimeStamp,
-                                                     String paymentInfo,
-                                                     String paymentMethod,
-                                                     String accountInfo,
-                                                     String transId,
+    public PaymentResponse updatePaymentFromCallback(String status, String transTimeStamp,
+                                                     String paymentInfo, String paymentMethod,
+                                                     String accountInfo, String transId,
                                                      String paymentRequestId) {
 
-        // 1. Retrouver le paiement en base grâce au mappedOrderId (paymentRequestId)
         Payment payment = paymentRepository.findByMappedOrderId(paymentRequestId)
-                .orElseThrow(() -> new IllegalArgumentException("Payment not found for requestId: " + paymentRequestId));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Payment not found for requestId: " + paymentRequestId));
 
-        // 2. Mettre à jour les champs du paiement
         payment.setStatus(status);
         payment.setPaymentInfo(paymentInfo);
         payment.setPaymentMethod(paymentMethod);
@@ -176,26 +260,17 @@ public class ArzekaPaymentServiceImpl implements ArzekaPaymentService {
         payment.setTransId(transId);
 
         try {
-            payment.setTransTimeStamp(java.time.LocalDateTime.parse(transTimeStamp));
+            payment.setTransTimeStamp(LocalDateTime.parse(transTimeStamp));
         } catch (Exception e) {
-            // Si le format n’est pas ISO, tu peux parser autrement ou ignorer
-            payment.setTransTimeStamp(java.time.LocalDateTime.now());
+            payment.setTransTimeStamp(LocalDateTime.now());
         }
 
-        // 3. Si tout est OK, notifier que c’est payé
         if ("SUCCESS".equalsIgnoreCase(status) && "COMPLETED".equalsIgnoreCase(paymentInfo)) {
-            // Exemple : tu peux ajouter un flag isPaid dans Dossier ou DossierOperation
-            if (payment.getDossier() != null) {
-                payment.getDossier().setStatus(com.deliacte.enums.DossierStatus.COMPLETED);
-            }
-            if (payment.getDossierOperation() != null) {
-                payment.getDossierOperation().setStatus(com.deliacte.enums.DossierOperationStatus.COMPLETED);
-            }
+            log.info("Paiement ARZEKA confirmé — mappedOrderId={}", paymentRequestId);
         }
 
         paymentRepository.save(payment);
 
-        // 4. Construire la réponse DTO
         return PaymentResponse.builder()
                 .status(payment.getStatus())
                 .transTimeStamp(payment.getTransTimeStamp())
@@ -210,13 +285,19 @@ public class ArzekaPaymentServiceImpl implements ArzekaPaymentService {
                 .build();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
+    private String generateMappedOrderId() {
+        String ts = String.valueOf(Instant.now().getEpochSecond());
+        String rand = UUID.randomUUID().toString().substring(0, 5).toUpperCase();
+        return "DELIACTE-" + ts + "-" + rand;
+    }
 
-
-
-    private String buildPaymentUrl(String msisdn, BigDecimal amount, String mappedOrderId) {
-        String encodedCallback = Base64.getEncoder().encodeToString(callbackUrl.getBytes());
-        String encodedUpdate = Base64.getEncoder().encodeToString(callbackUrl.getBytes());
+    private String buildPaymentUrl(String msisdn, BigDecimal amount, String mappedOrderId, String callbackLink) {
+        String encodedCallback = Base64.getEncoder().encodeToString(callbackLink.getBytes());
+        String encodedUpdate = Base64.getEncoder().encodeToString(updateStatusUrl.getBytes());
 
         return baseUrl + "/AvepayPaymentGatewayUI/avepay-payment/app/validorder?"
                 + "amount=" + amount

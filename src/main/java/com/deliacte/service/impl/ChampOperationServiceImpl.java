@@ -406,8 +406,23 @@ public class ChampOperationServiceImpl implements ChampOperationService {
 
         String numeroDossier = CodeGenerator.generateNumDossier();
 
+        // Charger les infos de paiement depuis l'opération
+        Boolean opHasPayment = null;
+        java.math.BigDecimal opFee = null;
+        Boolean procHasPayment = null;
+        java.math.BigDecimal procFee = null;
+        final UUID finalOpId = operationId;
+        Operation loadedOp = operationRepository.findById(finalOpId).orElse(null);
+        if (loadedOp != null) {
+            opHasPayment = loadedOp.getHasPayment();
+            opFee = loadedOp.getFee();
+            if (loadedOp.getProcedure() != null) {
+                procHasPayment = loadedOp.getProcedure().getHasPayment();
+                procFee = loadedOp.getProcedure().getFee();
+            }
+        }
+
         // 5. Construire la réponse finale
-        // 5. Construire le DTO final
         OperationFormResponseDto responseDto =
                 OperationFormResponseDto.builder()
                         .currentOperationId(operationId)
@@ -415,6 +430,10 @@ public class ChampOperationServiceImpl implements ChampOperationService {
                         .procedureId(procedureId)
                         .numeroDossier(numeroDossier)
                         .operationName(operationName)
+                        .operationHasPayment(opHasPayment)
+                        .operationFee(opFee)
+                        .procedureHasPayment(procHasPayment)
+                        .procedureFee(procFee)
                         .entities(entities)
                         .otherChampOperations(otherChampOperations)
                         .build();

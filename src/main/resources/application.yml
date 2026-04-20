@@ -66,16 +66,22 @@ app:
   name: Deliacte
   version: 1.0.0
   base-url: https://deliacte.gov.bf
-  frontend-url: http://localhost:4200
+  frontend-url: http://localhost:5173
+  frontend:
+    url: http://localhost:5173
   cors:
-    allowed-origins: http://localhost:4200,http://localhost:3000
+    allowed-origins: http://localhost:4200,http://localhost:3000,http://localhost:5173
   dossier:
     prefix: DOS
   email:
     from: deliacte@tic.gov.bf
     from-name: Deliacte - Plateforme de Services Gouvernementaux
   callback:
-    url: "http://localhost:8090/api/payment/callback" # URL que ARZEKA appellera après le paiement
+    url: "http://localhost:8090/api/payment/callback"
+  # URLs Arzeka (séparées : update = serveur, return = retour citoyen)
+  arzeka:
+    update-url: "http://localhost:8090/v1/payments/arzeka/return"
+    return-url:  "http://localhost:8090/v1/payments/arzeka/return"
 
 
 # Swagger/OpenAPI Configuration

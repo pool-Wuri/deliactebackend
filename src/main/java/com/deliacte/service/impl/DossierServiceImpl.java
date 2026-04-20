@@ -32,6 +32,7 @@ public class DossierServiceImpl implements DossierService {
     private final UserRepository userRepository;
     private final DossierChampValueService dossierChampValueService;
     private final ChampOperationRepository champOperationRepository;
+    private final PaymentRepository paymentRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // SOUMISSION PRINCIPALE
@@ -126,6 +127,7 @@ public class DossierServiceImpl implements DossierService {
                             .submittedAt(dossier.getSubmittedAt())
                             .currentOperationId(currentOp != null ? currentOp.getOperation().getId() : null)
                             .currentOperationName(currentOp != null ? currentOp.getOperation().getName() : null)
+                            .isCitizenCurrentOperation(currentOp != null ? Boolean.TRUE.equals(currentOp.getOperation().getIsCitizenOperation()) : null)
                             .build();
                 })
                 .toList();
@@ -242,6 +244,202 @@ public class DossierServiceImpl implements DossierService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // FORMULAIRE ÉTAPE CITOYENNE EN COURS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<OperationFormResponseDto> getCitizenPendingForm(String dossierNumber) {
+        if (dossierNumber == null || dossierNumber.isBlank()) {
+            throw new IllegalArgumentException("Le numéro de dossier est obligatoire");
+        }
+
+        Dossier dossier = dossierRepository.findByDossierNumberWithProcedure(dossierNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + dossierNumber));
+
+        DossierOperation pendingStep = dossierOperationRepository
+                .findFirstByDossierIdAndStatusOrderByReceivedAtDesc(dossier.getId(), DossierOperationStatus.PENDING)
+                .orElseThrow(() -> new RuntimeException("Aucune étape en attente pour ce dossier"));
+
+        Operation currentOperation = pendingStep.getOperation();
+
+        if (!Boolean.TRUE.equals(currentOperation.getIsCitizenOperation())) {
+            throw new RuntimeException("L'étape courante n'est pas une étape citoyenne");
+        }
+
+        // Construire la map des valeurs existantes
+        Map<UUID, String> champValuesMap = new HashMap<>();
+        for (DossierHistorique historique : dossier.getHistoriques()) {
+            for (DossierChampValue val : historique.getChampValues()) {
+                if (Boolean.TRUE.equals(val.getIsActive())) {
+                    String effectiveValue = (val.getValue() != null && !val.getValue().isBlank())
+                            ? val.getValue()
+                            : val.getFilePath();
+                    if (effectiveValue != null) {
+                        champValuesMap.put(val.getChampOperation().getId(), effectiveValue);
+                    }
+                }
+            }
+        }
+
+        // Récupérer le dernier commentaire de rejet
+        String rejectionComment = dossier.getHistoriques().stream()
+                .filter(h -> h.getActionType() == DossierActionType.REJECT)
+                .max(Comparator.comparing(DossierHistorique::getActionDate))
+                .map(DossierHistorique::getComment)
+                .orElse(null);
+
+        List<ChampOperation> champsAvecEntite = champOperationRepository.findByOperationGroupedByEntity(currentOperation.getId());
+        List<ChampOperation> champsSansEntite = champOperationRepository.findGlobalByOperation(currentOperation.getId());
+
+        Map<EntityObject, List<ChampOperation>> groupedByEntity =
+                champsAvecEntite.stream().collect(Collectors.groupingBy(ChampOperation::getEntityObject));
+
+        List<EntityObjectWithChampOperationDto> entities = new ArrayList<>();
+        for (Map.Entry<EntityObject, List<ChampOperation>> entry : groupedByEntity.entrySet()) {
+            EntityObject entity = entry.getKey();
+            List<ChampOperationResponseDto> champDtos = entry.getValue().stream().map(champ -> {
+                ChampOperationResponseDto dto = buildChampOperationDto(champ);
+                if (champValuesMap.containsKey(champ.getId())) {
+                    dto.setDefaultValue(champValuesMap.get(champ.getId()));
+                }
+                return dto;
+            }).toList();
+
+            entities.add(EntityObjectWithChampOperationDto.builder()
+                    .entityId(entity.getId())
+                    .entityCode(entity.getCode())
+                    .entityLabel(entity.getName())
+                    .champOperations(champDtos)
+                    .build());
+        }
+
+        List<ChampOperationResponseDto> otherChampOperations = champsSansEntite.stream().map(champ -> {
+            ChampOperationResponseDto dto = buildChampOperationDto(champ);
+            if (champValuesMap.containsKey(champ.getId())) {
+                dto.setDefaultValue(champValuesMap.get(champ.getId()));
+            }
+            return dto;
+        }).toList();
+
+        OperationFormResponseDto responseDto = OperationFormResponseDto.builder()
+                .currentOperationId(currentOperation.getId())
+                .procedureId(dossier.getProcedure().getId())
+                .procedureName(dossier.getProcedure().getName())
+                .operationName(currentOperation.getName())
+                .numeroDossier(dossierNumber)
+                .rejectionComment(rejectionComment)
+                .entities(entities)
+                .otherChampOperations(otherChampOperations)
+                .build();
+
+        return ApiResponse.success(responseDto, "Formulaire de l'étape citoyenne chargé avec succès");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FORMULAIRE AGENT (pré-rempli avec les valeurs du dossier)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<OperationFormResponseDto> getOperationFormForAgent(String dossierNumber, UUID operationId) {
+        Dossier dossier = dossierRepository.findByDossierNumberWithProcedure(dossierNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + dossierNumber));
+
+        Operation operation = operationRepository.findById(operationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Opération introuvable : " + operationId));
+
+        // Construire la map des valeurs actives du dossier (toutes opérations confondues)
+        Map<UUID, String> champValuesMap = new HashMap<>();
+        for (DossierHistorique historique : dossier.getHistoriques()) {
+            for (DossierChampValue val : historique.getChampValues()) {
+                if (Boolean.TRUE.equals(val.getIsActive())) {
+                    String effectiveValue = (val.getValue() != null && !val.getValue().isBlank())
+                            ? val.getValue()
+                            : val.getFilePath();
+                    if (effectiveValue != null) {
+                        champValuesMap.put(val.getChampOperation().getId(), effectiveValue);
+                    }
+                }
+            }
+        }
+
+        // Dernier commentaire de rejet
+        String rejectionComment = dossier.getHistoriques().stream()
+                .filter(h -> h.getActionType() == DossierActionType.REJECT)
+                .max(Comparator.comparing(DossierHistorique::getActionDate))
+                .map(DossierHistorique::getComment)
+                .orElse(null);
+
+        List<ChampOperation> champsAvecEntite = champOperationRepository.findByOperationGroupedByEntity(operation.getId());
+        List<ChampOperation> champsSansEntite = champOperationRepository.findGlobalByOperation(operation.getId());
+
+        Map<EntityObject, List<ChampOperation>> groupedByEntity =
+                champsAvecEntite.stream().collect(Collectors.groupingBy(ChampOperation::getEntityObject));
+
+        List<EntityObjectWithChampOperationDto> entities = new ArrayList<>();
+        for (Map.Entry<EntityObject, List<ChampOperation>> entry : groupedByEntity.entrySet()) {
+            EntityObject entity = entry.getKey();
+            List<ChampOperationResponseDto> champDtos = entry.getValue().stream().map(champ -> {
+                ChampOperationResponseDto dto = buildChampOperationDto(champ);
+                if (champValuesMap.containsKey(champ.getId())) {
+                    dto.setDefaultValue(champValuesMap.get(champ.getId()));
+                }
+                return dto;
+            }).toList();
+            entities.add(EntityObjectWithChampOperationDto.builder()
+                    .entityId(entity.getId())
+                    .entityCode(entity.getCode())
+                    .entityLabel(entity.getName())
+                    .champOperations(champDtos)
+                    .build());
+        }
+
+        List<ChampOperationResponseDto> otherChampOperations = champsSansEntite.stream().map(champ -> {
+            ChampOperationResponseDto dto = buildChampOperationDto(champ);
+            if (champValuesMap.containsKey(champ.getId())) {
+                dto.setDefaultValue(champValuesMap.get(champ.getId()));
+            }
+            return dto;
+        }).toList();
+
+        // Infos paiement
+        Boolean opHasPayment = operation.getHasPayment();
+        java.math.BigDecimal opFee = operation.getFee();
+        Boolean procHasPayment = dossier.getProcedure().getHasPayment();
+        java.math.BigDecimal procFee = dossier.getProcedure().getFee();
+
+        // Statut de la DossierOperation courante
+        String dossierOperationStatus = dossierOperationRepository
+                .findByDossierIdAndOperationIdAndStatus(dossier.getId(), operation.getId(), DossierOperationStatus.PENDING)
+                .map(ds -> ds.getStatus().name())
+                .orElseGet(() -> dossierOperationRepository
+                        .findByDossierIdOrderByReceivedAtAsc(dossier.getId()).stream()
+                        .filter(ds -> ds.getOperation().getId().equals(operation.getId()))
+                        .findFirst()
+                        .map(ds -> ds.getStatus().name())
+                        .orElse(null));
+
+        OperationFormResponseDto responseDto = OperationFormResponseDto.builder()
+                .currentOperationId(operation.getId())
+                .procedureId(dossier.getProcedure().getId())
+                .procedureName(dossier.getProcedure().getName())
+                .operationName(operation.getName())
+                .numeroDossier(dossierNumber)
+                .rejectionComment(rejectionComment)
+                .entities(entities)
+                .otherChampOperations(otherChampOperations)
+                .operationHasPayment(opHasPayment)
+                .operationFee(opFee)
+                .procedureHasPayment(procHasPayment)
+                .procedureFee(procFee)
+                .dossierOperationStatus(dossierOperationStatus)
+                .build();
+
+        return ApiResponse.success(responseDto, "Formulaire agent chargé avec succès");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // TIMELINE
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -279,6 +477,13 @@ public class DossierServiceImpl implements DossierService {
                 .map(ds -> ds.getOperation().getId())
                 .orElse(null);
 
+        // Paiement procédure : un seul enregistrement sur le dossier
+        boolean procPaymentRequired = Boolean.TRUE.equals(procedure.getHasPayment());
+        boolean procPaid = procPaymentRequired && paymentRepository.findByDossier(dossier)
+                .map(p -> "SUCCESS".equalsIgnoreCase(p.getStatus())
+                        && "COMPLETED".equalsIgnoreCase(p.getPaymentInfo()))
+                .orElse(false);
+
         // Construire les steps dans l'ordre de la procédure
         List<DossierOperationStepResponse> steps = new ArrayList<>();
         for (Operation op : allOps) {
@@ -295,6 +500,23 @@ public class DossierServiceImpl implements DossierService {
             String typeLibelle = (op.getTypeOperation() != null)
                     ? op.getTypeOperation().getLibelle() : null;
 
+            // Paiement opération
+            boolean opPaymentRequired = Boolean.TRUE.equals(op.getHasPayment());
+            boolean opPaid = false;
+            java.math.BigDecimal paymentFee = null;
+            if (opPaymentRequired && ds != null) {
+                opPaid = paymentRepository.findByDossierOperation(ds)
+                        .map(p -> "SUCCESS".equalsIgnoreCase(p.getStatus())
+                                && "COMPLETED".equalsIgnoreCase(p.getPaymentInfo()))
+                        .orElse(false);
+                paymentFee = op.getFee();
+            } else if (procPaymentRequired) {
+                opPaid = procPaid;
+                paymentFee = procedure.getFee();
+            }
+
+            boolean paymentRequired = opPaymentRequired || procPaymentRequired;
+
             steps.add(DossierOperationStepResponse.builder()
                     .operationId(op.getId())
                     .operationName(op.getName())
@@ -309,6 +531,10 @@ public class DossierServiceImpl implements DossierService {
                     .isCurrent(op.getId().equals(currentOpId))
                     .isFirst(Boolean.TRUE.equals(op.getIsFirstOperation()))
                     .isLast(Boolean.TRUE.equals(op.getIsLastOperation()))
+                    .hasTemplate(op.getTemplateOutput() != null && !op.getTemplateOutput().isBlank())
+                    .paymentRequired(paymentRequired)
+                    .isPaid(opPaid)
+                    .paymentFee(paymentFee)
                     .build());
         }
 

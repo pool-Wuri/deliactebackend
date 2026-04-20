@@ -33,4 +33,16 @@ public class DossierOperationStepResponse {
     private boolean isCurrent;
     private boolean isFirst;
     private boolean isLast;
+
+    /** true si l'opération possède un template Word configuré → téléchargement disponible */
+    private boolean hasTemplate;
+
+    /** true si un paiement est requis (operation.hasPayment ou procedure.hasPayment) */
+    private boolean paymentRequired;
+
+    /** true si le paiement a été effectué et confirmé (COMPLETED) */
+    private boolean isPaid;
+
+    /** Montant requis (FCFA) */
+    private java.math.BigDecimal paymentFee;
 }

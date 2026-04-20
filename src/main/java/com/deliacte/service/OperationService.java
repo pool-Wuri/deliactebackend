@@ -88,4 +88,6 @@ public interface OperationService {
     );
 
     ApiResponse<String> generatePdfFromWordTemplate(UUID operationId, String numeroDossier);
+
+    byte[] generatePdfBytes(UUID operationId, String numeroDossier);
 }

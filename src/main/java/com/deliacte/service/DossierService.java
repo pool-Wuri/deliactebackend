@@ -33,5 +33,11 @@ public interface DossierService {
     ApiResponse<OperationFormResponseDto> getOperationFormByNumeroDossier(String numeroDossier);
 
     @Transactional(readOnly = true)
+    ApiResponse<OperationFormResponseDto> getCitizenPendingForm(String dossierNumber);
+
+    @Transactional(readOnly = true)
     ApiResponse<DossierTimelineResponse> getDossierTimeline(String dossierNumber);
+
+    @Transactional(readOnly = true)
+    ApiResponse<OperationFormResponseDto> getOperationFormForAgent(String dossierNumber, UUID operationId);
 }

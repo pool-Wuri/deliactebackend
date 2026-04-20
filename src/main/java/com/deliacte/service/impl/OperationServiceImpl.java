@@ -28,7 +28,15 @@ import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.wml.Text;
 import org.docx4j.TraversalUtil;
 import org.docx4j.TraversalUtil.CallbackImpl;
+import com.deliacte.entity.Dossier;
+import com.deliacte.entity.DossierChampValue;
+import com.deliacte.entity.DossierHistorique;
+import com.deliacte.exception.ResourceNotFoundException;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -470,88 +478,150 @@ public class OperationServiceImpl implements OperationService {
 
     @Override
     public ApiResponse<String> generatePdfFromWordTemplate(UUID operationId, String numeroDossier) {
-
-        // 1️⃣ Vérifier l'opération
-        Operation operation = operationRepository.findById(operationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Opération introuvable"));
-
-        String filename = operation.getTemplateOutput();
-        if (filename == null || filename.isBlank()) {
-            return ApiResponse.error("Aucun templateOutput défini pour l'opération " + operationId);
-        }
-
-        String templateFile = DIRECTORY + filename;
-        File file = new File(templateFile);
-        if (!file.exists()) {
-            return ApiResponse.error("Le fichier Word n'existe pas : " + templateFile);
-        }
-
-        // 2️⃣ Préparer les chemins
-        String baseName = FileNameUtil.removeExtension(filename);
-        String tempDocxPath = DIRECTORY + baseName + "_" + numeroDossier + ".docx";
-        String pdfFile = DIRECTORY + baseName + "_" + numeroDossier + ".pdf";
-
-        // Supprimer l’ancien PDF si présent
-        File pdfOutput = new File(pdfFile);
-        if (pdfOutput.exists() && !pdfOutput.delete()) {
-            log.warn("Impossible de supprimer l'ancien fichier PDF : {}", pdfFile);
-        }
-
         try {
-            // 3️⃣ Charger le Word
-            WordprocessingMLPackage wordMLPackage = WordprocessingMLPackage.load(file);
-
-            // 4️⃣ Remplacer les placeholders
-            List<Object[]> champs = null;
-            Map<String, String> placeholders = new HashMap<>();
-            for (Object[] row : champs) {
-                String champOperationId = "${" + row[1].toString() + "}";
-                String valeur = row[0] != null ? row[0].toString() : "";
-                placeholders.put(champOperationId, valeur);
-            }
-            placeholders.put("${numero_dossier}", numeroDossier);
-
-            Docx4JSRUtil.searchAndReplace(wordMLPackage, placeholders);
-            cleanPlaceholders(wordMLPackage);
-
-            // 5️⃣ Sauvegarde temporaire
-            wordMLPackage.save(new File(tempDocxPath));
-
-            // 6️⃣ Conversion PDF avec LibreOffice
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "soffice",
-                    "--headless",
-                    "--convert-to", "pdf",
-                    "--outdir", new File(pdfFile).getParent(),
-                    tempDocxPath
-            );
-
-            long start = System.currentTimeMillis();
-            Process process = processBuilder.start();
-            int exitCode = process.waitFor();
-
-            if (exitCode != 0) {
-                return ApiResponse.error("Erreur lors de la conversion PDF (code sortie " + exitCode + ")");
-            }
-
-            log.info("PDF généré : {} en {} ms", pdfFile, (System.currentTimeMillis() - start));
-
-            // Nettoyage
-            new File(tempDocxPath).delete();
-
-            // 7️⃣ Réponse succès
-            return ApiResponse.success(
-                    DIRECTORY + baseName + "_" + numeroDossier + ".pdf",
-                    "PDF généré avec succès"
-            );
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return ApiResponse.error("La conversion PDF a été interrompue : " + e.getMessage());
+            byte[] bytes = generatePdfBytes(operationId, numeroDossier);
+            // Écrire sur disque et retourner le chemin (usage interne / admin)
+            Operation operation = operationRepository.findById(operationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Opération introuvable"));
+            String baseName = FileNameUtil.removeExtension(operation.getTemplateOutput());
+            String pdfPath  = DIRECTORY + File.separator + baseName + "_" + numeroDossier + ".pdf";
+            Files.write(new File(pdfPath).toPath(), bytes);
+            return ApiResponse.success(pdfPath, "PDF généré avec succès");
         } catch (Exception e) {
-            return ApiResponse.error("Erreur interne : " + e.getMessage());
+            return ApiResponse.error("Erreur : " + e.getMessage());
         }
     }
+
+    /**
+     * Génère le PDF de sortie pour un dossier à partir du template Word de l’opération.
+     *
+     * Les placeholders dans le template Word doivent respecter le format : ${CODE_CHAMP}
+     * Exemples : ${PASS_NOM}, ${numero_dossier}, ${date_generation}, ${procedure_nom}
+     *
+     * Retourne les bytes du PDF prêts à être streamés au client.
+     */
+    @Override
+    public byte[] generatePdfBytes(UUID operationId, String numeroDossier) {
+
+        // ── 1. Charger l’opération et son template ────────────────────────────
+        Operation operation = operationRepository.findById(operationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Opération introuvable : " + operationId));
+
+        String templateFilename = operation.getTemplateOutput();
+        if (templateFilename == null || templateFilename.isBlank()) {
+            throw new IllegalStateException("Aucun template configuré pour l’opération : " + operation.getName());
+        }
+
+        File templateFile = new File(DIRECTORY + File.separator + templateFilename);
+        if (!templateFile.exists()) {
+            throw new IllegalStateException("Fichier template introuvable : " + templateFile.getAbsolutePath());
+        }
+
+        // ── 2. Charger le dossier et construire la map de remplacement ────────
+        Dossier dossier = dossierRepository.findByDossierNumber(numeroDossier)
+                .orElseThrow(() -> new ResourceNotFoundException("Dossier introuvable : " + numeroDossier));
+
+        Map<String, String> placeholders = buildPlaceholders(dossier);
+
+        // ── 3. Charger le Word, remplacer, enregistrer en DOCX temporaire ─────
+        String baseName    = FileNameUtil.removeExtension(templateFilename);
+        String tempDocxPath = DIRECTORY + File.separator + baseName + "_" + numeroDossier + "_tmp.docx";
+        File   tempDocx    = new File(tempDocxPath);
+
+        try {
+            WordprocessingMLPackage pkg = WordprocessingMLPackage.load(templateFile);
+            Docx4JSRUtil.searchAndReplace(pkg, placeholders);
+            cleanPlaceholders(pkg);
+            pkg.save(tempDocx);
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors du remplissage du template Word : " + e.getMessage(), e);
+        }
+
+        // ── 4. Convertir en PDF via LibreOffice ───────────────────────────────
+        String outDir   = tempDocx.getParent();
+        // LibreOffice génère le PDF avec le même nom de base que le DOCX
+        String pdfName  = baseName + "_" + numeroDossier + "_tmp.pdf";
+        File   pdfFile  = new File(outDir + File.separator + pdfName);
+
+        if (pdfFile.exists()) pdfFile.delete();
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "soffice", "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", outDir,
+                    tempDocx.getAbsolutePath()
+            );
+            pb.redirectErrorStream(true);
+            long t0 = System.currentTimeMillis();
+            Process proc = pb.start();
+            int code = proc.waitFor();
+            if (code != 0) {
+                throw new RuntimeException("LibreOffice a retourné le code " + code);
+            }
+            log.info("PDF généré en {} ms : {}", System.currentTimeMillis() - t0, pdfFile.getAbsolutePath());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Conversion PDF interrompue", e);
+        } catch (IOException e) {
+            throw new RuntimeException("Impossible de lancer LibreOffice : " + e.getMessage(), e);
+        } finally {
+            tempDocx.delete();
+        }
+
+        // ── 5. Lire les bytes et nettoyer ─────────────────────────────────────
+        if (!pdfFile.exists()) {
+            throw new RuntimeException("Le fichier PDF attendu n’a pas été produit : " + pdfFile.getAbsolutePath());
+        }
+        try {
+            byte[] bytes = Files.readAllBytes(pdfFile.toPath());
+            pdfFile.delete();
+            return bytes;
+        } catch (IOException e) {
+            throw new RuntimeException("Impossible de lire le PDF généré : " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Construit la map des placeholders à partir des valeurs du dossier.
+     * Clés : ${CODE_CHAMP}  — valeurs : texte brut ou chemin fichier.
+     */
+    private Map<String, String> buildPlaceholders(Dossier dossier) {
+        Map<String, String> map = new HashMap<>();
+
+        // Valeurs des champs (les plus récentes actives gagnent en cas de doublon)
+        for (DossierHistorique historique : dossier.getHistoriques()) {
+            for (DossierChampValue val : historique.getChampValues()) {
+                if (!Boolean.TRUE.equals(val.getIsActive())) continue;
+                String code = val.getChampOperation().getCode();
+                String effectiveValue = (val.getValue() != null && !val.getValue().isBlank())
+                        ? val.getValue()
+                        : (val.getFilePath() != null ? val.getFilePath() : "");
+                map.put("${" + code + "}", effectiveValue);
+            }
+        }
+
+        // Placeholders système
+        map.put("${numero_dossier}",  dossier.getDossierNumber());
+        map.put("${date_generation}", LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        map.put("${procedure_nom}",   dossier.getProcedure() != null ? dossier.getProcedure().getName() : "");
+
+        if (dossier.getUser() != null) {
+            map.put("${citoyen_nom}",    nvl(dossier.getUser().getLastName()));
+            map.put("${citoyen_prenom}", nvl(dossier.getUser().getFirstName()));
+            map.put("${citoyen_email}",  nvl(dossier.getUser().getEmail()));
+        }
+
+        if (dossier.getSubmittedAt() != null) {
+            map.put("${date_soumission}", dossier.getSubmittedAt()
+                    .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        }
+
+        log.debug("Placeholders construits : {} entrées pour le dossier {}", map.size(), dossier.getDossierNumber());
+        return map;
+    }
+
+    private static String nvl(String s) { return s != null ? s : ""; }
 
     public static void cleanPlaceholders(WordprocessingMLPackage wordMLPackage) {
         // Parcourt tous les éléments du document

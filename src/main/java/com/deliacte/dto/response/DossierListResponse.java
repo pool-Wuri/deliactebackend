@@ -24,4 +24,5 @@ public class DossierListResponse {
 
     private UUID currentOperationId;
     private String currentOperationName;
+    private Boolean isCitizenCurrentOperation;
 }
